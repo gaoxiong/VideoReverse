@@ -55,6 +55,7 @@
 #include "jni-protocol.h"
 #include "aes-protocol.h"
 #include "sync.h"
+#include "reverse.h"
 
 #define FFMPEG_LOG_LEVEL AV_LOG_WARNING
 #define LOG_LEVEL 2
@@ -2363,170 +2364,6 @@ int player_create_interrupt_callback(struct Player *player) {
 	return 0;
 }
 
-int player_reverse(const char *file_path_src, const char *file_path_desc,
-  long positionUsStart, long positionUsEnd,
-  int video_stream_no, int audio_stream_no,
-  int subtitle_stream_no) {
-  char *src_filename = NULL;
-  char *video_dst_filename = NULL;
-  char *audio_dst_filename = NULL;
-  AVFormatContext *fmt_ctx = NULL;
-  AVCodecContext *video_dec_ctx = NULL, *audio_dec_ctx;
-  AVStream *video_stream = NULL, *audio_stream = NULL;
-  AVFrame *frame = NULL;
-  AVPacket pkt;
-  int video_frame_count = 0;
-  int audio_frame_count = 0;
-  FILE *video_dst_file = NULL;
-  FILE *audio_dst_file = NULL;
-  int video_stream_idx = -1, audio_stream_idx = -1;
-  uint8_t *video_dst_data[4] = {NULL};
-  int      video_dst_linesize[4];
-  int      video_dst_bufsize;
-
-  uint8_t **audio_dst_data = NULL;
-  int       audio_dst_linesize;
-  int       audio_dst_bufsize;
-
-  int ret = 0, got_frame;
-  
-  src_filename = file_path_src;
-  video_dst_filename = file_path_desc;
-  //audio_dst_filename = argv[3];
-
-  /* register all formats and codecs */
-  av_register_all();
-
-  /* open input file, and allocated format context */
-  if (avformat_open_input(&fmt_ctx, src_filename, NULL, NULL) < 0) {
-      LOGI(2, "Could not open source file %s\n", src_filename);
-      exit(1);
-  }
-
-  /* retrieve stream information */
-  if (avformat_find_stream_info(fmt_ctx, NULL) < 0) {
-      LOGI(2, "Could not find stream information\n");
-      exit(1);
-  }
-
-  if (open_codec_context(&video_stream_idx, fmt_ctx, AVMEDIA_TYPE_VIDEO) >= 0) {
-      video_stream = fmt_ctx->streams[video_stream_idx];
-      video_dec_ctx = video_stream->codec;
-
-      video_dst_file = fopen(video_dst_filename, "wb");
-      if (!video_dst_file) {
-          LOGI(2, "Could not open destination file %s\n", video_dst_filename);
-          ret = 1;
-          goto end;
-      }
-
-      /* allocate image where the decoded image will be put */
-      ret = av_image_alloc(video_dst_data, video_dst_linesize,
-                           video_dec_ctx->width, video_dec_ctx->height,
-                           video_dec_ctx->pix_fmt, 1);
-      if (ret < 0) {
-          LOGI(2, "Could not allocate raw video buffer\n");
-          goto end;
-      }
-      video_dst_bufsize = ret;
-  }
-
-  /* dump input information to stderr */
-  av_dump_format(fmt_ctx, 0, src_filename, 0);
-
-  if (open_codec_context(&audio_stream_idx, fmt_ctx, AVMEDIA_TYPE_AUDIO) >= 0) {
-      int nb_planes;
-
-      audio_stream = fmt_ctx->streams[audio_stream_idx];
-      audio_dec_ctx = audio_stream->codec;
-      audio_dst_file = fopen(audio_dst_filename, "wb");
-      if (!audio_dst_file) {
-          LOGI(2, "Could not open destination file %s\n", video_dst_filename);
-          ret = 1;
-          goto end;
-      }
-
-      nb_planes = av_sample_fmt_is_planar(audio_dec_ctx->sample_fmt) ?
-          audio_dec_ctx->channels : 1;
-      audio_dst_data = av_mallocz(sizeof(uint8_t *) * nb_planes);
-      if (!audio_dst_data) {
-          LOGI(2, "Could not allocate audio data buffers\n");
-          ret = AVERROR(ENOMEM);
-          goto end;
-      }
-  }
-
-  if (!audio_stream && !video_stream) {
-      LOGI(2, "Could not find audio or video stream in the input, aborting\n");
-      ret = 1;
-      goto end;
-  }
-
-  frame = avcodec_alloc_frame();
-  if (!frame) {
-      LOGI(2, "Could not allocate frame\n");
-      ret = AVERROR(ENOMEM);
-      goto end;
-  }
-
-  /* initialize packet, set data to NULL, let the demuxer fill it */
-  av_init_packet(&pkt);
-  pkt.data = NULL;
-  pkt.size = 0;
-
-  if (video_stream)
-      printf("Demuxing video from file '%s' into '%s'\n", src_filename, video_dst_filename);
-  if (audio_stream)
-      printf("Demuxing video from file '%s' into '%s'\n", src_filename, audio_dst_filename);
-
-  /* read frames from the file */
-  while (av_read_frame(fmt_ctx, &pkt) >= 0)
-      decode_packet(&got_frame, 0);
-
-  /* flush cached frames */
-  pkt.data = NULL;
-  pkt.size = 0;
-  do {
-      decode_packet(&got_frame, 1);
-  } while (got_frame);
-
-  printf("Demuxing succeeded.\n");
-
-  if (video_stream) {
-      printf("Play the output video file with the command:\n"
-             "ffplay -f rawvideo -pix_fmt %s -video_size %dx%d %s\n",
-             av_get_pix_fmt_name(video_dec_ctx->pix_fmt), video_dec_ctx->width, video_dec_ctx->height,
-             video_dst_filename);
-  }
-
-  if (audio_stream) {
-      const char *fmt;
-
-      if ((ret = get_format_from_sample_fmt(&fmt, audio_dec_ctx->sample_fmt) < 0))
-          goto end;
-      printf("Play the output audio file with the command:\n"
-             "ffplay -f %s -ac %d -ar %d %s\n",
-             fmt, audio_dec_ctx->channels, audio_dec_ctx->sample_rate,
-             audio_dst_filename);
-  }
-
-end:
-  if (video_dec_ctx)
-      avcodec_close(video_dec_ctx);
-  if (audio_dec_ctx)
-      avcodec_close(audio_dec_ctx);
-  avformat_close_input(&fmt_ctx);
-  if (video_dst_file)
-      fclose(video_dst_file);
-  if (audio_dst_file)
-      fclose(audio_dst_file);
-  av_free(frame);
-  av_free(video_dst_data[0]);
-  av_free(audio_dst_data);
-
-  return ret < 0;
-}
-
 int player_set_data_source(struct State *state, const char *file_path,
 		AVDictionary *dictionary, int video_stream_no, int audio_stream_no,
 		int subtitle_stream_no) {
@@ -2829,11 +2666,11 @@ int jni_player_reverse(JNIEnv *env, jobject thiz, jstring stringSrc,
 		int subtitle_stream_no) {
 		const char *file_path_src = (*env)->GetStringUTFChars(env, stringSrc, NULL);
 		const char *file_path_desc = (*env)->GetStringUTFChars(env, stringDesc, NULL);
-    int ret = player_reverse(file_path_src, file_path_desc,
+    int ret = reverse(file_path_src, file_path_desc,
       positionUsStart, positionUsEnd,
       video_stream_no, audio_stream_no, subtitle_stream_no);
-    (*env)->ReleaseStringUTFChars(env, string, file_path_src);
-    (*env)->ReleaseStringUTFChars(env, string, file_path_desc);
+    (*env)->ReleaseStringUTFChars(env, stringSrc, file_path_src);
+    (*env)->ReleaseStringUTFChars(env, stringDesc, file_path_desc);
     return ret;
 }
 

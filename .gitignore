@@ -13,3 +13,4 @@ local.properties
 *.iml
 Thumbs.db
 *.swp
+*.so
