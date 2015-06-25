@@ -1,0 +1,12 @@
+prefix=
+exec_prefix=
+libdir=${pcfiledir}/../../../libavresample
+includedir=${pcfiledir}/../../..
+
+Name: libavresample
+Description: Libav audio resampling library
+Version: 0.0.3
+Requires: 
+Conflicts:
+Libs: -L${libdir} -lavresample -lvo-amrwbenc -lvo-aacenc -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/libass/../ffmpeg-build/armeabi-v7a-neon/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/fribidi/../ffmpeg-build/armeabi-v7a-neon/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/freetype2/../ffmpeg-build/armeabi-v7a-neon/lib -lass -lm -lfribidi -lfreetype -lm -lz -lgcc
+Cflags: -I${includedir}

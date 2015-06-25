@@ -1,0 +1,12 @@
+prefix=
+exec_prefix=
+libdir=${pcfiledir}/../../../libavformat
+includedir=${pcfiledir}/../../..
+
+Name: libavformat
+Description: FFmpeg container format library
+Version: 54.29.105
+Requires: libavcodec = 54.63.100
+Conflicts:
+Libs: -L${libdir} -lavformat -lvo-amrwbenc -lvo-aacenc -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/libass/../ffmpeg-build/armeabi-v7a-neon/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/fribidi/../ffmpeg-build/armeabi-v7a-neon/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/freetype2/../ffmpeg-build/armeabi-v7a-neon/lib -lass -lm -lfribidi -lfreetype -lm -lz -lgcc
+Cflags: -I${includedir}

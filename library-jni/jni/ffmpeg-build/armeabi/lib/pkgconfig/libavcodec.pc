@@ -1,0 +1,14 @@
+prefix=../ffmpeg-build/armeabi
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libavcodec
+Description: FFmpeg codec library
+Version: 54.63.100
+Requires: libavutil = 51.73.101
+Requires.private: 
+Conflicts:
+Libs: -L${libdir} -lavcodec -lvo-amrwbenc -lvo-aacenc -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/libass/../ffmpeg-build/armeabi/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/fribidi/../ffmpeg-build/armeabi/lib -L/Users/gaoxiong/Documents/work/android/AndroidFFmpeg2/library-jni/jni/freetype2/../ffmpeg-build/armeabi/lib -lass -lm -lfribidi -lfreetype -lm -lz -lgcc
+Libs.private: 
+Cflags: -I${includedir}
