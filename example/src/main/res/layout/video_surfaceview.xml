@@ -54,13 +54,21 @@
             android:background="@android:drawable/ic_menu_info_details"
             android:enabled="true" />
 
+        <Button
+            android:id="@+id/reverse"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_toRightOf="@+id/scale_type"
+            android:background="@android:drawable/ic_menu_info_details"
+            android:enabled="true" />
+
         <SeekBar
             android:id="@+id/seek_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_alignParentRight="true"
             android:layout_centerVertical="true"
-            android:layout_toRightOf="@+id/scale_type" />
+            android:layout_toRightOf="@+id/reverse" />
     </RelativeLayout>
 
     <com.appunite.ffmpeg.FFmpegSurfaceView

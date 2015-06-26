@@ -147,7 +147,7 @@ static JNINativeMethod player_methods[] = {
 	{"resumeNative", "()V", (void*) jni_player_resume},
 
 	{"setDataSourceNative", "(Ljava/lang/String;Ljava/util/Map;III)I", (void*) jni_player_set_data_source},
-	{"reverseNative", "(Ljava/lang/String;Ljava/lang/String;J;J;III)I", (void*) jni_player_reverse},
+	{"reverseNative", "(Ljava/lang/String;Ljava/lang/String;JJIII)I", (void*) jni_player_reverse},
 	{"stopNative", "()V", (void*) jni_player_stop},
 
 	{"renderFrameStart", "()V", (void*) jni_player_render_frame_start},

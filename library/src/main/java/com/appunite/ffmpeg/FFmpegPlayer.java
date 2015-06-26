@@ -18,6 +18,7 @@
 
 package com.appunite.ffmpeg;
 
+import java.io.File;
 import java.util.Map;
 
 import android.app.Activity;
@@ -26,6 +27,7 @@ import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.os.AsyncTask;
+import android.os.Environment;
 import android.view.Surface;
 
 public class FFmpegPlayer {
@@ -180,6 +182,42 @@ public class FFmpegPlayer {
 
 	}
 
+	private static class ReverseTask extends
+		AsyncTask<Object, Void, Integer> {
+
+		private final FFmpegPlayer player;
+
+		public ReverseTask(FFmpegPlayer player) {
+			this.player = player;
+		}
+
+		@Override
+		protected Integer doInBackground(Object... params) {
+			String file_src = (String) params[0];
+			String file_dest = (String) params[1];
+
+			long startTime = (Long) params[2];
+			long endTime = (Long) params[3];
+
+			Integer videoStream = (Integer) params[4];
+			Integer audioStream = (Integer) params[5];
+			Integer subtitleStream = (Integer) params[6];
+
+			int videoStreamNo = videoStream == null ? -1 : videoStream.intValue();
+			int audioStreamNo = audioStream == null ? -1 : audioStream.intValue();
+			int subtitleStreamNo = subtitleStream == null ? -1 : subtitleStream.intValue();
+
+			int result = player.reverseNative(file_src, file_dest, startTime, endTime,
+				videoStreamNo, audioStreamNo, subtitleStreamNo);
+
+			return result;
+		}
+
+		@Override
+		protected void onPostExecute(Integer result) {
+		}
+	}
+
 	static {
 		NativeTester nativeTester = new NativeTester();
 		if (nativeTester.isNeon()) {
@@ -198,6 +236,7 @@ public class FFmpegPlayer {
 
 	private int mNativePlayer;
 	private final Activity activity;
+	public String file_src;
 
 	private Runnable updateTimeRunnable = new Runnable() {
 
@@ -257,6 +296,11 @@ public class FFmpegPlayer {
 	
 	public native void render(Surface surface);
 
+	public native int reverseNative(String file_src, String file_dest,
+																	long positionUsStart, long positionUsEnd,
+																	int videoStreamNo,
+																	int audioStreamNo, int subtitleStreamNo);
+
 	/**
 	 * 
 	 * @param streamsInfos
@@ -293,6 +337,23 @@ public class FFmpegPlayer {
 
 	public void resume() {
 		new ResumeTask(this).execute();
+	}
+
+	private String getSDCardFile(String file) {
+		File videoFile = new File(Environment.getExternalStorageDirectory(), file);
+		return "file://" + videoFile.getAbsolutePath();
+	}
+
+	private String javaFilePath2c(String filepath) {
+		return filepath.substring(String.valueOf("file://").length());
+	}
+
+	public void reverse() {
+		String file_dest = getSDCardFile("filereverse.mp4");
+		new ReverseTask(this).execute(javaFilePath2c(this.file_src),
+			javaFilePath2c(file_dest),
+			Long.valueOf(0), Long.valueOf(0),
+			Integer.valueOf(1), Integer.valueOf(0), Integer.valueOf(0));
 	}
 
 	private Bitmap prepareFrame(int width, int height) {
@@ -368,6 +429,7 @@ public class FFmpegPlayer {
 
 	public void setDataSource(String url, Map<String, String> dictionary,
 			int videoStream, int audioStream, int subtitlesStream) {
+		this.file_src = url;
 		new SetDataSourceTask(this).execute(url, dictionary,
 				Integer.valueOf(videoStream), Integer.valueOf(audioStream),
 				Integer.valueOf(subtitlesStream));

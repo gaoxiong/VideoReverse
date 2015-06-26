@@ -70,6 +70,7 @@ public class VideoActivity extends Activity implements OnClickListener,
 	private SeekBar mSeekBar;
 	private View mVideoView;
 	private Button mPlayPauseButton;
+	private Button mReverseButton;
 	private boolean mTracking = false;
 	private View mStreamsView;
 	private Spinner mLanguageSpinner;
@@ -94,7 +95,7 @@ public class VideoActivity extends Activity implements OnClickListener,
 
 		this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 		this.getWindow().clearFlags(
-				WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+			WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
 		this.getWindow().setBackgroundDrawable(null);
 
 		this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -109,6 +110,9 @@ public class VideoActivity extends Activity implements OnClickListener,
 		
 		mScaleButton = this.findViewById(R.id.scale_type);
 		mScaleButton.setOnClickListener(this);
+
+		mReverseButton = (Button) this.findViewById(R.id.reverse);
+		mReverseButton.setOnClickListener(this);
 		
 		mControlsView = this.findViewById(R.id.controls);
 		mStreamsView = this.findViewById(R.id.streams);
@@ -187,13 +191,12 @@ public class VideoActivity extends Activity implements OnClickListener,
 			}
 		}
 
-		this.mPlayPauseButton
-		.setBackgroundResource(android.R.drawable.ic_media_play);
+		this.mPlayPauseButton.setBackgroundResource(android.R.drawable.ic_media_play);
 		this.mPlayPauseButton.setEnabled(true);
 		mPlay = false;
 
 		mMpegPlayer.setDataSource(url, params, FFmpegPlayer.UNKNOWN_STREAM, mAudioStreamNo,
-				mSubtitleStreamNo);
+			mSubtitleStreamNo);
 
 	}
 
@@ -205,6 +208,9 @@ public class VideoActivity extends Activity implements OnClickListener,
 			resumePause();
 			return;
 		case R.id.scale_type:
+			return;
+		case R.id.reverse:
+			reverseVideo();
 			return;
 		default:
 			throw new RuntimeException();
@@ -309,6 +315,12 @@ public class VideoActivity extends Activity implements OnClickListener,
 			displaySystemMenu(true);
 		}
 		mPlay = !mPlay;
+	}
+
+	public void reverseVideo() {
+		this.mReverseButton.setEnabled(false);
+		mMpegPlayer.reverse();
+		//mReversing = !mReversing;
 	}
 
 	@Override
