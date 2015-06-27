@@ -179,6 +179,7 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     goto end;
   }
 
+  /* retrieve video stream index */
   ret = av_find_best_stream(fc_src, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
   if (ret < 0) {
     LOGI(LOG_LEVEL, "Could not find video stream information\n");
@@ -189,22 +190,27 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     LOGI(LOG_LEVEL, "format context is NULL\n");
     goto end;
   }
+  /* retrieve video stream */
   st_src = fc_src->streams[ret];
   if (st_src == NULL) {
     LOGI(LOG_LEVEL, "video stream is NULL\n");
     goto end;
   }
+  /* retrieve decodec context for video stream */
   dc_src = st_src->codec;
   if (dc_src == NULL) {
     LOGI(LOG_LEVEL, "decodec context is NULL\n");
     goto end;
   }
+  LOGI(LOG_LEVEL, "codec_is is %d\n", dc_src->codec_id);
+  
   dec_src = avcodec_find_decoder(dc_src->codec_id);
   if ((ret = avcodec_open2(dc_src, dec_src, NULL)) < 0) {
     LOGI(LOG_LEVEL, "Failed to open %s codec\n", 
          av_get_media_type_string(AVMEDIA_TYPE_VIDEO));
     goto end;
   }
+  LOGI(LOG_LEVEL, "codec name is %d\n", dec_src->name);
   /* dump input information to stderr */
   av_dump_format(fc_src, 0, SRC_FILE, 0);
   /* initialize packet, set data to NULL, let the demuxer fill it */
