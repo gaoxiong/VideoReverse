@@ -68,7 +68,7 @@ endif
 include $(CLEAR_VARS)
 LOCAL_ALLOW_UNDEFINED_SYMBOLS=false
 LOCAL_MODULE := ffmpeg-jni
-LOCAL_SRC_FILES := ffmpeg-jni.c player.c queue.c helpers.c jni-protocol.c blend.c convert.cpp reverse.c muxing.c demuxing.c
+LOCAL_SRC_FILES := ffmpeg-jni.c player.c queue.c helpers.c jni-protocol.c blend.c convert.cpp reverse.c muxing.c demuxing.c decoding_encoding.c
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/ffmpeg-build/$(TARGET_ARCH_ABI)/include
 LOCAL_SHARED_LIBRARY := ffmpeg-prebuilt
 
@@ -102,7 +102,7 @@ ifdef FEATURE_NEON
 include $(CLEAR_VARS)
 LOCAL_ALLOW_UNDEFINED_SYMBOLS=false
 LOCAL_MODULE := ffmpeg-jni-neon
-LOCAL_SRC_FILES := ffmpeg-jni.c player.c queue.c helpers.c jni-protocol.c blend.c convert.cpp reverse.c muxing.c demuxing.c
+LOCAL_SRC_FILES := ffmpeg-jni.c player.c queue.c helpers.c jni-protocol.c blend.c convert.cpp reverse.c muxing.c demuxing.c decoding_encoding.c
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/ffmpeg-build/$(TARGET_ARCH_ABI)/include
 LOCAL_SHARED_LIBRARY := ffmpeg-prebuilt-neon
 

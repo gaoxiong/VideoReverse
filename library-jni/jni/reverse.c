@@ -336,7 +336,7 @@ int doReverse(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FI
       return 0;
   }
   pMp4OFormat = pMp4Format->oformat;
-#if 1
+#if 0
   pMp4OFormat->video_codec = AV_CODEC_ID_MPEG4;
   AVCodec *video_enc_mp4 = NULL;
   AVStream *video_st_mp4;
@@ -489,7 +489,11 @@ int reverse(char *file_path_src, char *file_path_desc,
             int subtitle_stream_no) {
   const char *OUT_FILE = "/sdcard/outfile.h264";
   const char *OUT_FMT_FILE = "/sdcard/outfmtfile.mp4";
-  doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
+  const char *MUX_TEST_FILE = "/sdcard/mux_test_file.mp4";
+  const char *VIDEO_ENCODING_TEST_FILE = "/sdcard/video_encoding.mp4";
+  //doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
+  mux(MUX_TEST_FILE);
+  video_encode_example(VIDEO_ENCODING_TEST_FILE, AV_CODEC_ID_H264);
   return;
   
   char *src_filename = NULL;
