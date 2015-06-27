@@ -31,7 +31,6 @@ uint8_t *picture_buf_o;
 AVFrame *picture_o;
 AVPacket pkt_o;
 
-
 AVCodecContext *video_dec_ctx = NULL, *audio_dec_ctx, *video_enc_ctx = NULL;
 AVStream *video_stream = NULL, *audio_stream = NULL;
 AVPacket pkt;
@@ -53,110 +52,6 @@ int ret = 0, got_frame;
 #define STREAM_FRAME_RATE 25 /* 25 images/s */
 #define STREAM_PIX_FMT PIX_FMT_YUV420P /* default pix_fmt */
 
-/* Add an output stream. */
-static AVStream *add_stream(AVFormatContext *oc, 
-                            AVCodec **codec,
-                            enum AVCodecID codec_id,
-                            AVCodecContext *video_src_ctx)
-{
-  AVCodecContext *c;
-  AVStream *st;
-  
-  LOGI(LOG_LEVEL, "function: add_stream\n");
-
-  /* find the encoder */
-  *codec = avcodec_find_encoder(codec_id);
-  if (!(*codec)) {
-    LOGI(LOG_LEVEL, "Could not find encoder for '%s'\n",
-         avcodec_get_name(codec_id));
-    return;
-  }
-
-  st = avformat_new_stream(oc, *codec);
-  if (!st) {
-    LOGI(LOG_LEVEL, "Could not allocate stream\n");
-    return;
-  }
-  st->id = oc->nb_streams-1;
-  c = st->codec;
-
-  switch ((*codec)->type) {
-  case AVMEDIA_TYPE_AUDIO:
-    c->sample_fmt = AV_SAMPLE_FMT_FLTP;
-    c->bit_rate = 64000;
-    c->sample_rate = 44100;
-    c->channels = 2;
-  break;
-
-  case AVMEDIA_TYPE_VIDEO:
-    c->codec_id = codec_id;
-    c->width = video_src_ctx->width;
-    c->height = video_src_ctx->height;
-    c->pix_fmt = video_src_ctx->pix_fmt;//PIX_FMT_YUV420P;
-    c->time_base.num = video_src_ctx->time_base.num;//1;
-    c->time_base.den = video_src_ctx->time_base.den;//25;
-    c->bit_rate = video_src_ctx->bit_rate;
-    c->gop_size = video_src_ctx->gop_size;//250;
-    c->max_b_frames = video_src_ctx->max_b_frames;//10;
-    c->qmin = video_src_ctx->qmin;//10;
-    c->qmax = video_src_ctx->qmax;//51;
-  break;
-
-  default:
-    break;
-  }
-
-  /* Some formats want stream headers to be separate. */
-  if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-    c->flags |= CODEC_FLAG_GLOBAL_HEADER;
-
-  return st;
-}
-
-static void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
-{
-#if 0
- int ret;
- AVCodecContext *c = st->codec;
-
- /* open the codec */
- ret = avcodec_open2(c, codec, NULL);
- if (ret < 0) {
- fprintf(stderr, "Could not open video codec: %s\n", av_err2str(ret));
- exit(1);
- }
-
- /* allocate and init a re-usable frame */
- frame = avcodec_alloc_frame();
- if (!frame) {
- fprintf(stderr, "Could not allocate video frame\n");
- exit(1);
- }
-
- /* Allocate the encoded raw picture. */
- ret = avpicture_alloc(&dst_picture, c->pix_fmt, c->width, c->height);
- if (ret < 0) {
- fprintf(stderr, "Could not allocate picture: %s\n", av_err2str(ret));
- exit(1);
- }
-
- /* If the output format is not YUV420P, then a temporary YUV420P
-  * picture is needed too. It is then converted to the required
-  * output format. */
- if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
- ret = avpicture_alloc(&src_picture, AV_PIX_FMT_YUV420P, c->width, c->height);
- if (ret < 0) {
- fprintf(stderr, "Could not allocate temporary picture: %s\n",
- av_err2str(ret));
- exit(1);
- }
- }
-
- /* copy data and linesize picture pointers to frame */
- *((AVPicture *)frame) = dst_picture;
-#endif
-}
-
 int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FILE) {
   AVFormatContext *fc_src = NULL;
   AVFormatContext *fc_dst = NULL;
@@ -175,7 +70,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   int vst_idx = -1;
   int video_outbuf_size_dst;
   static uint8_t *video_outbuf_dst;
-  AVCodecID encode_id = AV_CODEC_ID_MPEG4;
   
   av_register_all();
   /* open input file, and allocated format context */
@@ -233,7 +127,7 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     goto end;
   }
   fmt_dst = fc_dst->oformat;
-  dec_dst = avcodec_find_encoder(encode_id);
+  dec_dst = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
   if (!dec_dst) {
     LOGI(LOG_LEVEL, "Could not find encoder for AV_CODEC_ID_MPEG4");
     goto end;
@@ -245,7 +139,7 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   }
   dc_dst = st_dst->codec;
   avcodec_get_context_defaults3(dc_dst, dec_dst);
-  dc_dst->codec_id = encode_id;
+  dc_dst->codec_id = AV_CODEC_ID_MPEG4;
   dc_dst->bit_rate = dc_src->bit_rate;
   dc_dst->width = dc_src->width;
   dc_dst->height = dc_src->height;
