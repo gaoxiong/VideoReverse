@@ -1,6 +1,5 @@
 #include "reverse.h"
 
-#include <android/log.h>
 #include <libavutil/timestamp.h>
 #include <libswscale/swscale.h>
 

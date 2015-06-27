@@ -1,5 +1,6 @@
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
+#include <android/log.h>
 
 #define FFMPEG_LOG_LEVEL AV_LOG_WARNING
 #define LOG_LEVEL 2

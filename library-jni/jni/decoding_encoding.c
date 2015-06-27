@@ -562,7 +562,7 @@ void video_decode_example(const char *outfilename, const char *filename)
 
                 /* the picture is allocated by the decoder. no need to
                    free it */
-                snLOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
+                LOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
                 pgm_save(picture->data[0], picture->linesize[0],
                          c->width, c->height, buf);
                 frame++;
@@ -584,7 +584,7 @@ void video_decode_example(const char *outfilename, const char *filename)
 
         /* the picture is allocated by the decoder. no need to
            free it */
-        snLOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
+        LOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
         pgm_save(picture->data[0], picture->linesize[0],
                  c->width, c->height, buf);
         frame++;
