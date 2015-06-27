@@ -45,7 +45,7 @@
 #define AUDIO_REFILL_THRESH 4096
 
 /* check that a given sample format is supported by the encoder */
-static int check_sample_fmt(AVCodec *codec, enum AVSampleFormat sample_fmt)
+int check_sample_fmt(AVCodec *codec, enum AVSampleFormat sample_fmt)
 {
     const enum AVSampleFormat *p = codec->sample_fmts;
 
@@ -58,7 +58,7 @@ static int check_sample_fmt(AVCodec *codec, enum AVSampleFormat sample_fmt)
 }
 
 /* just pick the highest supported samplerate */
-static int select_sample_rate(AVCodec *codec)
+int select_sample_rate(AVCodec *codec)
 {
     const int *p;
     int best_samplerate = 0;
@@ -75,7 +75,7 @@ static int select_sample_rate(AVCodec *codec)
 }
 
 /* select layout with the highest channel count */
-static int select_channel_layout(AVCodec *codec)
+int select_channel_layout(AVCodec *codec)
 {
     const uint64_t *p;
     uint64_t best_ch_layout = 0;
@@ -100,7 +100,7 @@ static int select_channel_layout(AVCodec *codec)
 /*
  * Audio encoding example
  */
-static void audio_encode_example(const char *filename)
+void audio_encode_example(const char *filename)
 {
     AVCodec *codec;
     AVCodecContext *c= NULL;
@@ -231,7 +231,7 @@ static void audio_encode_example(const char *filename)
 /*
  * Audio decoding.
  */
-static void audio_decode_example(const char *outfilename, const char *filename)
+void audio_decode_example(const char *outfilename, const char *filename)
 {
     AVCodec *codec;
     AVCodecContext *c= NULL;
@@ -327,7 +327,7 @@ static void audio_decode_example(const char *outfilename, const char *filename)
 /*
  * Video encoding example
  */
-static void video_encode_example(const char *filename, int codec_id)
+void video_encode_example(const char *filename, int codec_id)
 {
     AVCodec *codec;
     AVCodecContext *c= NULL;
@@ -462,8 +462,7 @@ static void video_encode_example(const char *filename, int codec_id)
 /*
  * Video decoding example
  */
-
-static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
+void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
                      char *filename)
 {
     FILE *f;
@@ -476,7 +475,7 @@ static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
     fclose(f);
 }
 
-static void video_decode_example(const char *outfilename, const char *filename)
+void video_decode_example(const char *outfilename, const char *filename)
 {
     AVCodec *codec;
     AVCodecContext *c= NULL;
