@@ -16,15 +16,18 @@
 #define LOGW(level, ...) if (level <= LOG_LEVEL + 5) {__android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__);}
 
 int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaType type);
-int decode_packet(int *got_frame, AVFrame*, int cached, int);
+int decode_packet(int *got_frame, AVFrame*, int cached, int, int);
+void encode_frame_to_dst(AVFrame *frame, int frameCount);
 
 AVFormatContext *fmt_ctx = NULL;
 AVFormatContext *fmt_ctx_o = NULL;
 AVOutputFormat *fmt_o;
 AVStream *video_o;
-AVCodec *pCodec_o;
+AVCodec *codec_o;
 uint8_t *picture_buf_o;
 AVFrame *picture_o;
+AVPacket pkt_o;
+
 
 AVCodecContext *video_dec_ctx = NULL, *audio_dec_ctx, *video_enc_ctx = NULL;
 AVStream *video_stream = NULL, *audio_stream = NULL;
@@ -45,9 +48,9 @@ int       audio_dst_bufsize;
 int ret = 0, got_frame;
 
 int reverse(char *file_path_src, char *file_path_desc,
-  long positionUsStart, long positionUsEnd,
-  int video_stream_no, int audio_stream_no,
-  int subtitle_stream_no) {
+            long positionUsStart, long positionUsEnd,
+            int video_stream_no, int audio_stream_no,
+            int subtitle_stream_no) {
   
   char *src_filename = NULL;
   char *video_dst_filename = NULL;
@@ -137,24 +140,57 @@ int reverse(char *file_path_src, char *file_path_desc,
   av_init_packet(&pkt);
   pkt.data = NULL;
   pkt.size = 0;
+  
+  av_init_packet(&pkt_o);
+  pkt_o.data = NULL;
+  pkt_o.size = 0;
 
   if (video_stream)
       LOGI(LOG_LEVEL, "Demuxing video from file '%s' into '%s'\n", src_filename, video_dst_filename);
   if (audio_stream)
       LOGI(LOG_LEVEL, "Demuxing video from file '%s' into '%s'\n", src_filename, audio_dst_filename);
 
+  codec_o = avcodec_find_encoder(AV_CODEC_ID_H264);
+  if (!codec_o) {
+    fprintf(stderr, "Codec not found\n");
+    exit(1);
+  }
+
+  video_enc_ctx = avcodec_alloc_context3(codec_o);
+  video_enc_ctx->bit_rate = video_dec_ctx->bit_rate;
+  video_enc_ctx->width = video_dec_ctx->width;
+  video_enc_ctx->height = video_dec_ctx->height;
+  video_enc_ctx->time_base = video_dec_ctx->time_base;
+  video_enc_ctx->gop_size = video_dec_ctx->gop_size;
+  video_enc_ctx->max_b_frames = video_dec_ctx->max_b_frames;
+  video_enc_ctx->pix_fmt = video_dec_ctx->pix_fmt;
+  video_enc_ctx->priv_data = video_dec_ctx->priv_data;
+  /* open it */
+  if (avcodec_open2(video_enc_ctx, codec_o, NULL) < 0) {
+    fprintf(stderr, "Could not open codec\n");
+    exit(1);
+  }
+
   /* read frames from the file */
   int frameCount = 0;
   while (av_read_frame(fmt_ctx, &pkt) >= 0) {
-      // decode pkt to frame
-      decode_packet(&got_frame, frame, 0, frameCount++);
+    // decode pkt to frame
+    decode_packet(&got_frame, frame, 0, frameCount, 0);
+    if (got_frame) {
+      encode_frame_to_dst(frame, frameCount);
+    }
+    frameCount++;
   }
 
   /* flush cached frames */
   pkt.data = NULL;
   pkt.size = 0;
   do {
-      decode_packet(&got_frame, frame, 1, frameCount++);
+      decode_packet(&got_frame, frame, 1, frameCount, 0);
+      if (got_frame) {
+      encode_frame_to_dst(frame, frameCount);
+    }
+    frameCount++;
   } while (got_frame);
   LOGI(LOG_LEVEL, "Demuxing succeeded.\n");
 
@@ -194,6 +230,48 @@ end:
   return ret < 0;
 }
 
+void encode_frame_to_dst(AVFrame *frame, int frameCount) {
+  /* write to another file */
+  av_init_packet(&pkt_o);
+  pkt_o.data = NULL;    // packet data will be allocated by the encoder
+  pkt_o.size = 0;
+  fflush(stdout);
+
+  int x = 0, y = 0;
+  
+  /* prepare a dummy image */
+  /* Y */
+  for(y=0;y<video_enc_ctx->height;y++) {
+      for(x=0;x<video_enc_ctx->width;x++) {
+          frame->data[0][y * frame->linesize[0] + x] = x + y + frameCount * 3;
+      }
+  }
+
+  /* Cb and Cr */
+  x = y = 0;
+  for(y=0;y<video_enc_ctx->height/2;y++) {
+      for(x=0;x<video_enc_ctx->width/2;x++) {
+          frame->data[1][y * frame->linesize[1] + x] = 128 + y + frameCount * 2;
+          frame->data[2][y * frame->linesize[2] + x] = 64 + x + frameCount * 5;
+      }
+  }
+
+  frame->pts = frameCount;
+  /* encode the image */
+  int got_output;
+  ret = avcodec_encode_video2(video_enc_ctx, &pkt_o, frame, &got_output);
+  if (ret < 0) {
+      fprintf(stderr, "Error encoding frame\n");
+      exit(1);
+  }
+
+  if (got_output) {
+      printf("Write frame %3d (size=%5d)\n", frameCount, pkt_o.size);
+      fwrite(pkt_o.data, 1, pkt_o.size, video_dst_file);
+      av_free_packet(&pkt);
+  }
+}
+
 int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaType type) {
   int ret;
   AVStream *st;
@@ -224,7 +302,9 @@ int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaTy
   }
 }
 
-int decode_packet(int *got_frame, AVFrame *frame, int cached, int frameCount) {
+int decode_packet(int *got_frame, AVFrame *frame, 
+                  int cached, int frameCount,
+                  int writePictureToFile) {
   int ret = 0;
   if (pkt.stream_index == video_stream_idx) {
     ret = avcodec_decode_video2(video_dec_ctx, frame, got_frame, &pkt);
@@ -237,53 +317,18 @@ int decode_packet(int *got_frame, AVFrame *frame, int cached, int frameCount) {
            cached ? "(cached)" : "",
            video_frame_count++, frame->coded_picture_number,
            av_ts2timestr(frame->pts, &video_dec_ctx->time_base));
-#if 1
-      /* copy decoded frame to dest buffer */
-      av_image_copy(video_dst_data, video_dst_linesize,
-                    (const uint8_t **)(frame->data),
-                    frame->linesize,
-                    video_dec_ctx->pix_fmt,
-                    video_dec_ctx->width,
-                    video_dec_ctx->height);
-      /* write to rawvideo file */
-      fwrite(video_dst_data[0], 1, video_dst_bufsize, video_dst_file);
-#else
-      /* write to another file */
-      AVFrame *frame_o = avcodec_alloc_frame();
-      uint8_t* frame_buf;
-      int size;
-      AVPacket pkt_o;
-      int y_size = video_dec_ctx->width * video_dec_ctx->height;
-      av_new_packet(&pkt_o, y_size * 3);
-      
-      size = avpicture_get_size(video_dec_ctx->pix_fmt, 
-                                video_dec_ctx->width, 
-                                video_dec_ctx->height);
-      frame_buf = (uint8_t *)av_malloc(size);
-      avpicture_fill((AVPicture *)frame_o, frame_buf, 
-                      video_dec_ctx->pix_fmt, 
-                      video_dec_ctx->width, 
+
+      if (writePictureToFile) {
+        /* copy decoded frame to dest buffer */
+        av_image_copy(video_dst_data, video_dst_linesize,
+                      (const uint8_t **)(frame->data),
+                      frame->linesize,
+                      video_dec_ctx->pix_fmt,
+                      video_dec_ctx->width,
                       video_dec_ctx->height);
-
-      frame_o->data[0] = frame_buf;  // ????Y  
-      frame_o->data[1] = frame_buf + y_size;  // U   
-      frame_o->data[2] = frame_buf + y_size * 5 / 4; // V
-      frame_o->pts = frameCount;
-
-      int got_picture = 0;
-      int ret = avcodec_encode_video2(video_dec_ctx, &pkt_o,
-        frame_o, &got_picture);
-      if (ret < 0){  
-        LOGI(LOG_LEVEL, "Failed to encode!\n");
-        return -1;  
-      }  
-      if (got_picture==1){  
-        LOGI(LOG_LEVEL, "Succeed to encode 1 frame!\n");
-        pkt_o.stream_index = video_stream->index;  
-        ret = av_write_frame(fmt_ctx_o, &pkt);  
-        av_free_packet(&pkt_o);
+        /* write to rawvideo file */
+        fwrite(video_dst_data[0], 1, video_dst_bufsize, video_dst_file);
       }
-#endif
     }
   } else if (pkt.stream_index == audio_stream_idx) {
     // TODO
