@@ -112,12 +112,12 @@ void audio_encode_example(const char *filename)
     uint16_t *samples;
     float t, tincr;
 
-    printf("Encode audio file %s\n", filename);
+    LOGI(LOG_LEVEL, "Encode audio file %s\n", filename);
 
     /* find the MP2 encoder */
     codec = avcodec_find_encoder(AV_CODEC_ID_MP2);
     if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        LOGI(LOG_LEVEL, stderr, "Codec not found\n");
         exit(1);
     }
 
@@ -129,7 +129,7 @@ void audio_encode_example(const char *filename)
     /* check that the encoder supports s16 pcm input */
     c->sample_fmt = AV_SAMPLE_FMT_S16;
     if (!check_sample_fmt(codec, c->sample_fmt)) {
-        fprintf(stderr, "Encoder does not support sample format %s",
+        LOGI(LOG_LEVEL, stderr, "Encoder does not support sample format %s",
                 av_get_sample_fmt_name(c->sample_fmt));
         exit(1);
     }
@@ -141,20 +141,20 @@ void audio_encode_example(const char *filename)
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
+        LOGI(LOG_LEVEL, stderr, "Could not open codec\n");
         exit(1);
     }
 
     f = fopen(filename, "wb");
     if (!f) {
-        fprintf(stderr, "Could not open %s\n", filename);
+        LOGI(LOG_LEVEL, stderr, "Could not open %s\n", filename);
         exit(1);
     }
 
     /* frame containing input raw audio */
     frame = avcodec_alloc_frame();
     if (!frame) {
-        fprintf(stderr, "Could not allocate audio frame\n");
+        LOGI(LOG_LEVEL, stderr, "Could not allocate audio frame\n");
         exit(1);
     }
 
@@ -168,7 +168,7 @@ void audio_encode_example(const char *filename)
                                              c->sample_fmt, 0);
     samples = av_malloc(buffer_size);
     if (!samples) {
-        fprintf(stderr, "Could not allocate %d bytes for samples buffer\n",
+        LOGI(LOG_LEVEL, stderr, "Could not allocate %d bytes for samples buffer\n",
                 buffer_size);
         exit(1);
     }
@@ -176,7 +176,7 @@ void audio_encode_example(const char *filename)
     ret = avcodec_fill_audio_frame(frame, c->channels, c->sample_fmt,
                                    (const uint8_t*)samples, buffer_size, 0);
     if (ret < 0) {
-        fprintf(stderr, "Could not setup audio frame\n");
+        LOGI(LOG_LEVEL, stderr, "Could not setup audio frame\n");
         exit(1);
     }
 
@@ -198,7 +198,7 @@ void audio_encode_example(const char *filename)
         /* encode the samples */
         ret = avcodec_encode_audio2(c, &pkt, frame, &got_output);
         if (ret < 0) {
-            fprintf(stderr, "Error encoding audio frame\n");
+            LOGI(LOG_LEVEL, stderr, "Error encoding audio frame\n");
             exit(1);
         }
         if (got_output) {
@@ -211,7 +211,7 @@ void audio_encode_example(const char *filename)
     for (got_output = 1; got_output; i++) {
         ret = avcodec_encode_audio2(c, &pkt, NULL, &got_output);
         if (ret < 0) {
-            fprintf(stderr, "Error encoding frame\n");
+            LOGI(LOG_LEVEL, stderr, "Error encoding frame\n");
             exit(1);
         }
 
@@ -243,12 +243,12 @@ void audio_decode_example(const char *outfilename, const char *filename)
 
     av_init_packet(&avpkt);
 
-    printf("Decode audio file %s to %s\n", filename, outfilename);
+    LOGI(LOG_LEVEL, "Decode audio file %s to %s\n", filename, outfilename);
 
     /* find the mpeg audio decoder */
     codec = avcodec_find_decoder(AV_CODEC_ID_MP2);
     if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        LOGI(LOG_LEVEL, stderr, "Codec not found\n");
         exit(1);
     }
 
@@ -256,13 +256,13 @@ void audio_decode_example(const char *outfilename, const char *filename)
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
+        LOGI(LOG_LEVEL, stderr, "Could not open codec\n");
         exit(1);
     }
 
     f = fopen(filename, "rb");
     if (!f) {
-        fprintf(stderr, "Could not open %s\n", filename);
+        LOGI(LOG_LEVEL, stderr, "Could not open %s\n", filename);
         exit(1);
     }
     outfile = fopen(outfilename, "wb");
@@ -280,7 +280,7 @@ void audio_decode_example(const char *outfilename, const char *filename)
 
         if (!decoded_frame) {
             if (!(decoded_frame = avcodec_alloc_frame())) {
-                fprintf(stderr, "Could not allocate audio frame\n");
+                LOGI(LOG_LEVEL, stderr, "Could not allocate audio frame\n");
                 exit(1);
             }
         } else
@@ -288,7 +288,7 @@ void audio_decode_example(const char *outfilename, const char *filename)
 
         len = avcodec_decode_audio4(c, decoded_frame, &got_frame, &avpkt);
         if (len < 0) {
-            fprintf(stderr, "Error while decoding\n");
+            LOGI(LOG_LEVEL, stderr, "Error while decoding\n");
             exit(1);
         }
         if (got_frame) {
@@ -337,12 +337,12 @@ void video_encode_example(const char *filename, int codec_id)
     AVPacket pkt;
     uint8_t endcode[] = { 0, 0, 1, 0xb7 };
 
-    printf("Encode video file %s\n", filename);
+    LOGI(LOG_LEVEL, "Encode video file %s\n", filename);
 
     /* find the mpeg1 video encoder */
     codec = avcodec_find_encoder(codec_id);
     if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        LOGI(LOG_LEVEL, stderr, "Codec not found\n");
         exit(1);
     }
 
@@ -364,19 +364,19 @@ void video_encode_example(const char *filename, int codec_id)
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
+        LOGI(LOG_LEVEL, stderr, "Could not open codec\n");
         exit(1);
     }
 
     f = fopen(filename, "wb");
     if (!f) {
-        fprintf(stderr, "Could not open %s\n", filename);
+        LOGI(LOG_LEVEL, stderr, "Could not open %s\n", filename);
         exit(1);
     }
 
     frame = avcodec_alloc_frame();
     if (!frame) {
-        fprintf(stderr, "Could not allocate video frame\n");
+        LOGI(LOG_LEVEL, stderr, "Could not allocate video frame\n");
         exit(1);
     }
     frame->format = c->pix_fmt;
@@ -388,7 +388,7 @@ void video_encode_example(const char *filename, int codec_id)
     ret = av_image_alloc(frame->data, frame->linesize, c->width, c->height,
                          c->pix_fmt, 32);
     if (ret < 0) {
-        fprintf(stderr, "Could not allocate raw picture buffer\n");
+        LOGI(LOG_LEVEL, stderr, "Could not allocate raw picture buffer\n");
         exit(1);
     }
 
@@ -420,12 +420,12 @@ void video_encode_example(const char *filename, int codec_id)
         /* encode the image */
         ret = avcodec_encode_video2(c, &pkt, frame, &got_output);
         if (ret < 0) {
-            fprintf(stderr, "Error encoding frame\n");
+            LOGI(LOG_LEVEL, stderr, "Error encoding frame\n");
             exit(1);
         }
 
         if (got_output) {
-            printf("Write frame %3d (size=%5d)\n", i, pkt.size);
+            LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", i, pkt.size);
             fwrite(pkt.data, 1, pkt.size, f);
             av_free_packet(&pkt);
         }
@@ -437,12 +437,12 @@ void video_encode_example(const char *filename, int codec_id)
 
         ret = avcodec_encode_video2(c, &pkt, NULL, &got_output);
         if (ret < 0) {
-            fprintf(stderr, "Error encoding frame\n");
+            LOGI(LOG_LEVEL, stderr, "Error encoding frame\n");
             exit(1);
         }
 
         if (got_output) {
-            printf("Write frame %3d (size=%5d)\n", i, pkt.size);
+            LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", i, pkt.size);
             fwrite(pkt.data, 1, pkt.size, f);
             av_free_packet(&pkt);
         }
@@ -456,7 +456,7 @@ void video_encode_example(const char *filename, int codec_id)
     av_free(c);
     av_freep(&frame->data[0]);
     avcodec_free_frame(&frame);
-    printf("\n");
+    LOGI(LOG_LEVEL, "\n");
 }
 
 /*
@@ -469,7 +469,7 @@ void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
     int i;
 
     f=fopen(filename,"w");
-    fprintf(f,"P5\n%d %d\n%d\n",xsize,ysize,255);
+    LOGI(LOG_LEVEL, f,"P5\n%d %d\n%d\n",xsize,ysize,255);
     for(i=0;i<ysize;i++)
         fwrite(buf + i * wrap,1,xsize,f);
     fclose(f);
@@ -491,12 +491,12 @@ void video_decode_example(const char *outfilename, const char *filename)
     /* set end of buffer to 0 (this ensures that no overreading happens for damaged mpeg streams) */
     memset(inbuf + INBUF_SIZE, 0, FF_INPUT_BUFFER_PADDING_SIZE);
 
-    printf("Decode video file %s to %s\n", filename, outfilename);
+    LOGI(LOG_LEVEL, "Decode video file %s to %s\n", filename, outfilename);
 
     /* find the mpeg1 video decoder */
     codec = avcodec_find_decoder(AV_CODEC_ID_MPEG1VIDEO);
     if (!codec) {
-        fprintf(stderr, "Codec not found\n");
+        LOGI(LOG_LEVEL, stderr, "Codec not found\n");
         exit(1);
     }
 
@@ -510,7 +510,7 @@ void video_decode_example(const char *outfilename, const char *filename)
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
+        LOGI(LOG_LEVEL, stderr, "Could not open codec\n");
         exit(1);
     }
 
@@ -518,13 +518,13 @@ void video_decode_example(const char *outfilename, const char *filename)
 
     f = fopen(filename, "rb");
     if (!f) {
-        fprintf(stderr, "Could not open %s\n", filename);
+        LOGI(LOG_LEVEL, stderr, "Could not open %s\n", filename);
         exit(1);
     }
 
     picture = avcodec_alloc_frame();
     if (!picture) {
-        fprintf(stderr, "Could not allocate video frame\n");
+        LOGI(LOG_LEVEL, stderr, "Could not allocate video frame\n");
         exit(1);
     }
 
@@ -553,16 +553,16 @@ void video_decode_example(const char *outfilename, const char *filename)
         while (avpkt.size > 0) {
             len = avcodec_decode_video2(c, picture, &got_picture, &avpkt);
             if (len < 0) {
-                fprintf(stderr, "Error while decoding frame %d\n", frame);
+                LOGI(LOG_LEVEL, stderr, "Error while decoding frame %d\n", frame);
                 exit(1);
             }
             if (got_picture) {
-                printf("Saving frame %3d\n", frame);
+                LOGI(LOG_LEVEL, "Saving frame %3d\n", frame);
                 fflush(stdout);
 
                 /* the picture is allocated by the decoder. no need to
                    free it */
-                snprintf(buf, sizeof(buf), outfilename, frame);
+                snLOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
                 pgm_save(picture->data[0], picture->linesize[0],
                          c->width, c->height, buf);
                 frame++;
@@ -579,12 +579,12 @@ void video_decode_example(const char *outfilename, const char *filename)
     avpkt.size = 0;
     len = avcodec_decode_video2(c, picture, &got_picture, &avpkt);
     if (got_picture) {
-        printf("Saving last frame %3d\n", frame);
+        LOGI(LOG_LEVEL, "Saving last frame %3d\n", frame);
         fflush(stdout);
 
         /* the picture is allocated by the decoder. no need to
            free it */
-        snprintf(buf, sizeof(buf), outfilename, frame);
+        snLOGI(LOG_LEVEL, buf, sizeof(buf), outfilename, frame);
         pgm_save(picture->data[0], picture->linesize[0],
                  c->width, c->height, buf);
         frame++;
@@ -595,7 +595,7 @@ void video_decode_example(const char *outfilename, const char *filename)
     avcodec_close(c);
     av_free(c);
     avcodec_free_frame(&picture);
-    printf("\n");
+    LOGI(LOG_LEVEL, "\n");
 }
 
 int main(int argc, char **argv)
@@ -606,7 +606,7 @@ int main(int argc, char **argv)
     avcodec_register_all();
 
     if (argc < 2) {
-        printf("usage: %s output_type\n"
+        LOGI(LOG_LEVEL, "usage: %s output_type\n"
                "API example program to decode/encode a media stream with libavcodec.\n"
                "This program generates a synthetic stream and encodes it to a file\n"
                "named test.h264, test.mp2 or test.mpg depending on output_type.\n"
@@ -626,7 +626,7 @@ int main(int argc, char **argv)
         video_encode_example("test.mpg", AV_CODEC_ID_MPEG1VIDEO);
         video_decode_example("test%02d.pgm", "test.mpg");
     } else {
-        fprintf(stderr, "Invalid output type '%s', choose between 'h264', 'mp2', or 'mpg'\n",
+        LOGI(LOG_LEVEL, stderr, "Invalid output type '%s', choose between 'h264', 'mp2', or 'mpg'\n",
                 output_type);
         return 1;
     }

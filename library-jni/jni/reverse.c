@@ -11,12 +11,6 @@
 #include <errno.h>
 
 #define OUTFILE_ENABLED 1
-#define FFMPEG_LOG_LEVEL AV_LOG_WARNING
-#define LOG_LEVEL 2
-#define LOG_TAG "reverse.c"
-#define LOGI(level, ...) if (level <= LOG_LEVEL) {__android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__);}
-#define LOGE(level, ...) if (level <= LOG_LEVEL + 10) {__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__);}
-#define LOGW(level, ...) if (level <= LOG_LEVEL + 5) {__android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__);}
 
 int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaType type);
 int decode_packet(int *got_frame, AVFrame*, int cached, int, int);

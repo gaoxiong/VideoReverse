@@ -1,6 +1,13 @@
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 
+#define FFMPEG_LOG_LEVEL AV_LOG_WARNING
+#define LOG_LEVEL 2
+#define LOG_TAG "reverse.c"
+#define LOGI(level, ...) if (level <= LOG_LEVEL) {__android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__);}
+#define LOGE(level, ...) if (level <= LOG_LEVEL + 10) {__android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__);}
+#define LOGW(level, ...) if (level <= LOG_LEVEL + 5) {__android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__);}
+
 int reverse(char *file_path_src, char *file_path_desc,
   long positionUsStart, long positionUsEnd,
   int video_stream_no, int audio_stream_no,
