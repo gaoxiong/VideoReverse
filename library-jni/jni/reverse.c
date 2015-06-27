@@ -2,12 +2,15 @@
 
 #include <android/log.h>
 #include <libavutil/timestamp.h>
+#include <libswscale/swscale.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <errno.h>
 
+#define OUTFILE_ENABLED 1
 #define FFMPEG_LOG_LEVEL AV_LOG_WARNING
 #define LOG_LEVEL 2
 #define LOG_TAG "reverse.c"
@@ -47,10 +50,441 @@ int       audio_dst_bufsize;
 
 int ret = 0, got_frame;
 
+#define STREAM_FRAME_RATE 25 /* 25 images/s */
+#define STREAM_PIX_FMT PIX_FMT_YUV420P /* default pix_fmt */
+
+/* Add an output stream. */
+static AVStream *add_stream(AVFormatContext *oc, 
+                            AVCodec **codec,
+                            enum AVCodecID codec_id,
+                            AVCodecContext *video_src_ctx)
+{
+  AVCodecContext *c;
+  AVStream *st;
+  
+  LOGI(LOG_LEVEL, "function: add_stream\n");
+
+  /* find the encoder */
+  *codec = avcodec_find_encoder(codec_id);
+  if (!(*codec)) {
+    LOGI(LOG_LEVEL, "Could not find encoder for '%s'\n",
+         avcodec_get_name(codec_id));
+    return;
+  }
+
+  st = avformat_new_stream(oc, *codec);
+  if (!st) {
+    LOGI(LOG_LEVEL, "Could not allocate stream\n");
+    return;
+  }
+  st->id = oc->nb_streams-1;
+  c = st->codec;
+
+  switch ((*codec)->type) {
+  case AVMEDIA_TYPE_AUDIO:
+    c->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    c->bit_rate = 64000;
+    c->sample_rate = 44100;
+    c->channels = 2;
+  break;
+
+  case AVMEDIA_TYPE_VIDEO:
+    c->codec_id = codec_id;
+    c->width = video_src_ctx->width;
+    c->height = video_src_ctx->height;
+    c->pix_fmt = video_src_ctx->pix_fmt;//PIX_FMT_YUV420P;
+    c->time_base.num = video_src_ctx->time_base.num;//1;
+    c->time_base.den = video_src_ctx->time_base.den;//25;
+    c->bit_rate = video_src_ctx->bit_rate;
+    c->gop_size = video_src_ctx->gop_size;//250;
+    c->max_b_frames = video_src_ctx->max_b_frames;//10;
+    c->qmin = video_src_ctx->qmin;//10;
+    c->qmax = video_src_ctx->qmax;//51;
+  break;
+
+  default:
+    break;
+  }
+
+  /* Some formats want stream headers to be separate. */
+  if (oc->oformat->flags & AVFMT_GLOBALHEADER)
+    c->flags |= CODEC_FLAG_GLOBAL_HEADER;
+
+  return st;
+}
+
+static void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
+{
+#if 0
+ int ret;
+ AVCodecContext *c = st->codec;
+
+ /* open the codec */
+ ret = avcodec_open2(c, codec, NULL);
+ if (ret < 0) {
+ fprintf(stderr, "Could not open video codec: %s\n", av_err2str(ret));
+ exit(1);
+ }
+
+ /* allocate and init a re-usable frame */
+ frame = avcodec_alloc_frame();
+ if (!frame) {
+ fprintf(stderr, "Could not allocate video frame\n");
+ exit(1);
+ }
+
+ /* Allocate the encoded raw picture. */
+ ret = avpicture_alloc(&dst_picture, c->pix_fmt, c->width, c->height);
+ if (ret < 0) {
+ fprintf(stderr, "Could not allocate picture: %s\n", av_err2str(ret));
+ exit(1);
+ }
+
+ /* If the output format is not YUV420P, then a temporary YUV420P
+  * picture is needed too. It is then converted to the required
+  * output format. */
+ if (c->pix_fmt != AV_PIX_FMT_YUV420P) {
+ ret = avpicture_alloc(&src_picture, AV_PIX_FMT_YUV420P, c->width, c->height);
+ if (ret < 0) {
+ fprintf(stderr, "Could not allocate temporary picture: %s\n",
+ av_err2str(ret));
+ exit(1);
+ }
+ }
+
+ /* copy data and linesize picture pointers to frame */
+ *((AVPicture *)frame) = dst_picture;
+#endif
+}
+
+int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FILE) {
+  AVFormatContext *fc_src = NULL;
+  AVStream *st_src = NULL;
+  AVCodecContext *dc_src = NULL;
+  AVCodec *dec_src = NULL;
+  AVFrame *frame_src = NULL;
+
+  int ret = -1;
+  int vst_idx = -1;
+  
+  av_register_all();
+  /* open input file, and allocated format context */
+  if (avformat_open_input(&fc_src, SRC_FILE, NULL, NULL) < 0) {
+    LOGI(LOG_LEVEL, "Could not open source file %s\n", SRC_FILE);
+    goto end;
+  }
+  /* retrieve stream information */
+  if (avformat_find_stream_info(fc_src, NULL) < 0) {
+    LOGI(LOG_LEVEL, "Could not find stream information\n");
+    goto end;
+  }
+
+  ret = av_find_best_stream(fc_src, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+  if (ret < 0) {
+    LOGI(LOG_LEVEL, "Could not find video stream information\n");
+    goto end;
+  }
+  vst_idx = ret;
+  if (fc_src == NULL) {
+    LOGI(LOG_LEVEL, "format context is NULL\n");
+    goto end;
+  }
+  st_src = fc_src->streams[ret];
+  if (st_src == NULL) {
+    LOGI(LOG_LEVEL, "video stream is NULL\n");
+    goto end;
+  }
+  dc_src = st_src->codec;
+  if (dc_src == NULL) {
+    LOGI(LOG_LEVEL, "decodec context is NULL\n");
+    goto end;
+  }
+  dec_src = avcodec_find_decoder(dc_src->codec_id);
+  if ((ret = avcodec_open2(dc_src, dec_src, NULL)) < 0) {
+    LOGI(LOG_LEVEL, "Failed to open %s codec\n", 
+         av_get_media_type_string(AVMEDIA_TYPE_VIDEO));
+    goto end;
+  }
+  /* dump input information to stderr */
+  av_dump_format(fc_src, 0, SRC_FILE, 0);
+  /* initialize packet, set data to NULL, let the demuxer fill it */
+  AVPacket pt_src;
+  av_init_packet(&pt_src);
+  pt_src.data = NULL;
+  pt_src.size = 0;
+  frame_src = avcodec_alloc_frame();
+  
+  int frameCount = 0;
+  int got_frame = -1;
+  LOGI(LOG_LEVEL, "Start decoding video frame\n");
+  while (av_read_frame(fc_src, &pt_src) >= 0) {
+    if (pt_src.stream_index == vst_idx) {
+      ret = avcodec_decode_video2(dc_src, frame_src, &got_frame, &pt_src);
+      if (ret < 0) {
+        LOGI(LOG_LEVEL, "Error decoding video frame\n");
+        goto end;
+      }
+      if (got_frame) {
+        LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
+             frameCount, frame_src->coded_picture_number,
+             av_ts2timestr(frame_src->pts, &dc_src->time_base));
+      } else {
+        LOGI(LOG_LEVEL, "got_frame:%d, n:%d\n", got_frame, frameCount);
+      }
+      frameCount++;
+    }
+  }
+  LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
+end:
+  if (dc_src) {
+    avcodec_close(dc_src);
+  }
+  if (fc_src) {
+    avformat_close_input(&fc_src);
+  }
+  if (frame_src) {
+    av_free(frame_src);
+  }
+  return 0;
+}
+
+
+int doReverse(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FILE) {
+  av_register_all();
+  AVFormatContext* pFormat = NULL;
+  LOGI(LOG_LEVEL, "1. avformat_open_input: %s\n", SRC_FILE);
+  if (avformat_open_input(&pFormat, SRC_FILE, NULL, NULL) < 0)
+  {
+      return 0;
+  }
+  AVCodecContext* video_dec_ctx = NULL;
+  AVCodec* video_dec = NULL;
+  LOGI(LOG_LEVEL, "2. avformat_find_stream_info\n");
+  if (avformat_find_stream_info(pFormat, NULL) < 0)
+  {
+      return 0;
+  }
+  LOGI(LOG_LEVEL, "3. av_dump_format\n");
+  av_dump_format(pFormat, 0, SRC_FILE, 0);
+  int video_stream_idx = -1;
+  LOGI(LOG_LEVEL, "4. open_codec_context for input VIDEO\n");
+  if (open_codec_context(&video_stream_idx, pFormat, AVMEDIA_TYPE_VIDEO) < 0)
+  {
+    return 0;
+  }
+  video_dec_ctx = pFormat->streams[video_stream_idx]->codec;
+  LOGI(LOG_LEVEL, "5. avcodec_find_decoder\n");
+  video_dec = avcodec_find_decoder(video_dec_ctx->codec_id);
+#if OUTFILE_ENABLED
+  AVFormatContext* pOFormat = NULL;
+  AVOutputFormat* ofmt = NULL;
+  LOGI(LOG_LEVEL, "6. avformat_alloc_output_context2: %s\n", OUT_FILE);
+  if (avformat_alloc_output_context2(&pOFormat, NULL, NULL, OUT_FILE) < 0)
+  {
+      return 0;
+  }
+  ofmt = pOFormat->oformat;
+  LOGI(LOG_LEVEL, "7. avio_open: %s\n", OUT_FILE);
+  if (avio_open(&(pOFormat->pb), OUT_FILE, AVIO_FLAG_READ_WRITE) < 0)
+  {
+      return 0;
+  }
+  AVCodecContext *video_enc_ctx = NULL;
+  AVCodec *video_enc = NULL;
+  LOGI(LOG_LEVEL, "8. avcodec_find_encoder: [%d]", ofmt->video_codec);
+  video_enc = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+  LOGI(LOG_LEVEL, "%s\n9. avformat_new_stream for H264\n", video_enc == NULL ? "null" : "OK");
+  AVStream *video_st = avformat_new_stream(pOFormat, video_enc);
+  if (!video_st)
+      return 0;
+  video_enc_ctx = video_st->codec;
+  video_enc_ctx->width = video_dec_ctx->width;
+  video_enc_ctx->height = video_dec_ctx->height;
+  video_enc_ctx->pix_fmt = video_dec_ctx->pix_fmt;//PIX_FMT_YUV420P;
+  video_enc_ctx->time_base.num = video_dec_ctx->time_base.num;//1;
+  video_enc_ctx->time_base.den = video_dec_ctx->time_base.den;//25;
+  video_enc_ctx->bit_rate = video_dec_ctx->bit_rate;
+  video_enc_ctx->gop_size = video_dec_ctx->gop_size;//250;
+  video_enc_ctx->max_b_frames = video_dec_ctx->max_b_frames;//10;
+  //H264 
+  //pCodecCtx->me_range = video_dec_ctx->pix_fmt;//16; 
+  //pCodecCtx->max_qdiff = video_dec_ctx->pix_fmt;//4; 
+  video_enc_ctx->qmin = video_dec_ctx->qmin;//10;
+  video_enc_ctx->qmax = video_dec_ctx->qmax;//51;
+  LOGI(LOG_LEVEL, "10. avcodec_open2: H264\n");
+  if (avcodec_open2(video_enc_ctx, video_enc, NULL) < 0)
+  {
+      LOGI(LOG_LEVEL, "11. open encode error\n");
+      return 0;
+  }
+  LOGI(LOG_LEVEL, "12. Output264video Information====================\n");
+  av_dump_format(pOFormat, 0, OUT_FILE, 1);
+#endif
+
+  //mp4 file
+  AVFormatContext* pMp4Format = NULL;
+  AVOutputFormat* pMp4OFormat = NULL;
+  LOGI(LOG_LEVEL, "13. avformat_alloc_output_context2: %s\n", OUT_FMT_FILE);
+  if (avformat_alloc_output_context2(&pMp4Format, NULL, NULL, OUT_FMT_FILE) < 0)
+  {
+      return 0;
+  }
+  pMp4OFormat = pMp4Format->oformat;
+#if 1
+  pMp4OFormat->video_codec = AV_CODEC_ID_MPEG4;
+  AVCodec *video_enc_mp4 = NULL;
+  AVStream *video_st_mp4;
+  if (pMp4OFormat->video_codec != AV_CODEC_ID_NONE) {
+    video_st_mp4 = add_stream(pMp4Format, &video_enc_mp4, 
+                              pMp4OFormat->video_codec,
+                              video_dec_ctx);
+  }
+  if (video_st_mp4) {
+    //open_video(pMp4Format, video_enc_mp4, video_st_mp4);
+    /* open the codec */
+    LOGI(LOG_LEVEL, "13.5. avcodec_open2: mp4\n");
+    if (avcodec_open2(video_st_mp4->codec, video_enc_mp4, NULL) < 0) {
+      LOGI(LOG_LEVEL, "Could not open video codec\n");
+      return 0;
+    }
+  }
+#endif
+  LOGI(LOG_LEVEL, "14. avio_open: mp4\n");
+  if (avio_open(&(pMp4Format->pb), OUT_FMT_FILE, AVIO_FLAG_READ_WRITE) < 0)
+  {
+      return 0;
+  }
+
+  int i;
+  for (i = 0; i < pFormat->nb_streams; i++) {
+      AVStream *in_stream = pFormat->streams[i];
+      LOGI(LOG_LEVEL, "15. avformat_new_stream: %d\n", i);
+      AVStream *out_stream = avformat_new_stream(pMp4Format, in_stream->codec->codec);
+      if (!out_stream) {
+          return 0;
+      }
+      int ret = 0;
+      LOGI(LOG_LEVEL, "16. avcodec_copy_context\n");
+      ret = avcodec_copy_context(out_stream->codec, in_stream->codec);
+      if (ret < 0) {
+          LOGI(LOG_LEVEL, "Failed to copy context from input to output stream codec context\n");
+          return 0;
+      }
+      out_stream->codec->codec_tag = 0;
+      if (pMp4Format->oformat->flags & AVFMT_GLOBALHEADER)
+          out_stream->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+  }
+
+  LOGI(LOG_LEVEL, "17. av_dump_format:%s\n", OUT_FMT_FILE);
+  av_dump_format(pMp4Format, 0, OUT_FMT_FILE, 1);
+
+  LOGI(LOG_LEVEL, "18. avformat_write_header for mp4\n");
+  if (avformat_write_header(pMp4Format, NULL) < 0)
+  {
+    return 0;
+  }
+
+  av_opt_set(video_enc_ctx->priv_data, "preset", "superfast", 0);
+  av_opt_set(video_enc_ctx->priv_data, "tune", "zerolatency", 0);
+#if OUTFILE_ENABLED
+  LOGI(LOG_LEVEL, "19. avformat_write_header for H264\n");
+  avformat_write_header(pOFormat, NULL);
+#endif
+  AVPacket pkt;
+  AVPacket tmppkt;
+  av_init_packet(&tmppkt);
+  av_init_packet(&pkt);
+  AVFrame *pFrame = avcodec_alloc_frame();
+  int ts = 0;
+  while (1)
+  {
+    LOGI(LOG_LEVEL, "20. av_read_frame\n");
+    if (av_read_frame(pFormat, &pkt) < 0)
+    {
+#if OUTFILE_ENABLED
+      avio_close(pOFormat->pb);
+#endif
+      av_write_trailer(pMp4Format);
+      avio_close(pMp4Format->pb);
+      return 0;
+    }
+    if (pkt.stream_index == 0)
+    {
+      LOGI(LOG_LEVEL, "21. stream_index : %d\n", pkt.stream_index);
+      int got_picture = 0, ret = 0;
+      LOGI(LOG_LEVEL, "22. avcodec_decode_video2\n");
+      ret = avcodec_decode_video2(video_dec_ctx, pFrame, &got_picture, &pkt);
+      if (ret < 0)
+      {
+        return 0;
+      }
+      LOGI(LOG_LEVEL, "23. frame pts: %d\n", pFrame->pts);
+      pFrame->pts = pFrame->pkt_pts;//ts++;
+      if (got_picture)
+      {
+        int size = video_enc_ctx->width * video_enc_ctx->height * 3 / 2;
+        char* buf = av_malloc(size);//new char[size];
+        memset(buf, 0, size);
+        tmppkt.data = (uint8_t*)buf;
+        tmppkt.size = size;
+        LOGI(LOG_LEVEL, "24. avcodec_encode_video2\n");
+        ret = avcodec_encode_video2(video_enc_ctx, &tmppkt, pFrame, &got_picture);
+        if (ret < 0)
+        {
+#if OUTFILE_ENABLED
+          avio_close(pOFormat->pb);
+#endif
+          av_free(buf);
+          return 0;
+        }
+        if (got_picture)
+        {
+          LOGI(LOG_LEVEL, "25. av_interleaved_write_frame\n");
+          //ret = av_interleaved_write_frame(pOFormat, tmppkt);
+          AVStream *in_stream = pFormat->streams[pkt.stream_index];
+          AVStream *out_stream = pMp4Format->streams[pkt.stream_index];
+
+          tmppkt.pts = av_rescale_q_rnd(tmppkt.pts, in_stream->time_base, out_stream->time_base, AV_ROUND_NEAR_INF);
+          tmppkt.dts = av_rescale_q_rnd(tmppkt.dts, in_stream->time_base, out_stream->time_base, AV_ROUND_NEAR_INF);
+          tmppkt.duration = av_rescale_q(tmppkt.duration, in_stream->time_base, out_stream->time_base);
+          tmppkt.pos = -1;
+          ret = av_interleaved_write_frame(pMp4Format, &tmppkt);
+          if (ret < 0)
+              return 0;
+          av_free(buf);
+        }
+      }
+      //avcodec_free_frame(&pFrame);
+    }
+    else if (pkt.stream_index == 1)
+    {
+      LOGI(LOG_LEVEL, "26. stream_index : %d\n", pkt.stream_index);
+      AVStream *in_stream = pFormat->streams[pkt.stream_index];
+      AVStream *out_stream = pMp4Format->streams[pkt.stream_index];
+
+      pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, AV_ROUND_NEAR_INF);
+      pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, AV_ROUND_NEAR_INF);
+      pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
+      pkt.pos = -1;
+      LOGI(LOG_LEVEL, "27. av_interleaved_write_frame\n");
+      if (av_interleaved_write_frame(pMp4Format, &tmppkt) < 0)
+        return 0;
+    }
+  }
+  LOGI(LOG_LEVEL, "28. avcodec_free_frame\n");
+  avcodec_free_frame(&pFrame);
+  LOGI(LOG_LEVEL, "29. DONE...............\n");
+  return 0;
+}
+
 int reverse(char *file_path_src, char *file_path_desc,
             long positionUsStart, long positionUsEnd,
             int video_stream_no, int audio_stream_no,
             int subtitle_stream_no) {
+  const char *OUT_FILE = "/sdcard/outfile.h264";
+  const char *OUT_FMT_FILE = "/sdcard/outfmtfile.mp4";
+  doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
+  return;
   
   char *src_filename = NULL;
   char *video_dst_filename = NULL;
@@ -278,6 +712,7 @@ int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaTy
   AVCodecContext *dec_ctx = NULL;
   AVCodec *dec = NULL;
 
+  LOGI(LOG_LEVEL, "av_find_best_stream\n");
   ret = av_find_best_stream(fmt_ctx, type, -1, -1, NULL, 0);
   if (ret < 0) {
     LOGI(LOG_LEVEL, "Could not find %s stream in inout file '%s'\n",
@@ -289,11 +724,13 @@ int open_codec_context(int *stream_idx, AVFormatContext *fmt_ctx, enum AVMediaTy
 
     /* find decoder for the stream */
     dec_ctx = st->codec;
+    LOGI(LOG_LEVEL, "avcodec_find_decoder\n");
     dec = avcodec_find_decoder(dec_ctx->codec_id);
     if (!dec) {
       LOGI(LOG_LEVEL, "Failed to find %s codec\n", av_get_media_type_string(type));
       return ret;
     }
+    LOGI(LOG_LEVEL, "avcodec_open2\n");
     if ((ret = avcodec_open2(dec_ctx, dec, NULL)) < 0) {
       LOGI(LOG_LEVEL, "Failed to open %s codec\n", av_get_media_type_string(type));
       return ret;
