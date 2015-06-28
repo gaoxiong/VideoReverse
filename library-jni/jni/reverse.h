@@ -21,3 +21,8 @@ void video_decode_example(const char *outfilename, const char *filename);
 void video_encode_example(const char *filename, int codec_id);
 void audio_decode_example(const char *outfilename, const char *filename);
 void audio_encode_example(const char *filename);
+
+void write_video_frame(AVFormatContext *oc, AVStream *st);
+AVStream *add_video_stream(AVFormatContext *oc, AVCodec **codec,
+                           enum AVCodecID codec_id);
+void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st);

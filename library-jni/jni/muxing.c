@@ -65,13 +65,13 @@ static AVStream *add_audio_stream(AVFormatContext *oc, AVCodec **codec,
     /* find the audio encoder */
     *codec = avcodec_find_encoder(codec_id);
     if (!(*codec)) {
-        fprintf(stderr, "Could not find codec\n");
+        LOGI(LOG_LEVEL, "Could not find codec\n");
         exit(1);
     }
 
     st = avformat_new_stream(oc, *codec);
     if (!st) {
-        fprintf(stderr, "Could not allocate stream\n");
+        LOGI(LOG_LEVEL, "Could not allocate stream\n");
         exit(1);
     }
     st->id = 1;
@@ -99,7 +99,7 @@ static void open_audio(AVFormatContext *oc, AVCodec *codec, AVStream *st)
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "could not open codec\n");
+        LOGI(LOG_LEVEL, "could not open codec\n");
         exit(1);
     }
 
@@ -161,7 +161,7 @@ static void write_audio_frame(AVFormatContext *oc, AVStream *st)
 
     /* Write the compressed frame to the media file. */
     if (av_interleaved_write_frame(oc, &pkt) != 0) {
-        fprintf(stderr, "Error while writing audio frame\n");
+        LOGI(LOG_LEVEL, "Error while writing audio frame\n");
         exit(1);
     }
     avcodec_free_frame(&frame);
@@ -183,8 +183,8 @@ static uint8_t *video_outbuf;
 static int frame_count, video_outbuf_size;
 
 /* Add a video output stream. */
-static AVStream *add_video_stream(AVFormatContext *oc, AVCodec **codec,
-                                  enum AVCodecID codec_id)
+AVStream *add_video_stream(AVFormatContext *oc, AVCodec **codec,
+                           enum AVCodecID codec_id)
 {
     AVCodecContext *c;
     AVStream *st;
@@ -192,13 +192,13 @@ static AVStream *add_video_stream(AVFormatContext *oc, AVCodec **codec,
     /* find the video encoder */
     *codec = avcodec_find_encoder(codec_id);
     if (!(*codec)) {
-        fprintf(stderr, "codec not found\n");
+        LOGI(LOG_LEVEL, "codec not found\n");
         exit(1);
     }
 
     st = avformat_new_stream(oc, *codec);
     if (!st) {
-        fprintf(stderr, "Could not alloc stream\n");
+        LOGI(LOG_LEVEL, "Could not alloc stream\n");
         exit(1);
     }
 
@@ -238,14 +238,14 @@ static AVStream *add_video_stream(AVFormatContext *oc, AVCodec **codec,
     return st;
 }
 
-static void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
+void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
 {
     int ret;
     AVCodecContext *c = st->codec;
 
     /* open the codec */
     if (avcodec_open2(c, codec, NULL) < 0) {
-        fprintf(stderr, "Could not open codec\n");
+        LOGI(LOG_LEVEL, "Could not open codec\n");
         exit(1);
     }
 
@@ -264,14 +264,14 @@ static void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
     /* allocate and init a re-usable frame */
     frame = avcodec_alloc_frame();
     if (!frame) {
-        fprintf(stderr, "Could not allocate video frame\n");
+        LOGI(LOG_LEVEL, "Could not allocate video frame\n");
         exit(1);
     }
 
     /* Allocate the encoded raw picture. */
     ret = avpicture_alloc(&dst_picture, c->pix_fmt, c->width, c->height);
     if (ret < 0) {
-        fprintf(stderr, "Could not allocate picture\n");
+        LOGI(LOG_LEVEL, "Could not allocate picture\n");
         exit(1);
     }
 
@@ -281,7 +281,7 @@ static void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
     if (c->pix_fmt != PIX_FMT_YUV420P) {
         ret = avpicture_alloc(&src_picture, PIX_FMT_YUV420P, c->width, c->height);
         if (ret < 0) {
-            fprintf(stderr, "Could not allocate temporary picture\n");
+            LOGI(LOG_LEVEL, "Could not allocate temporary picture\n");
             exit(1);
         }
     }
@@ -312,7 +312,7 @@ static void fill_yuv_image(AVPicture *pict, int frame_index,
     }
 }
 
-static void write_video_frame(AVFormatContext *oc, AVStream *st)
+void write_video_frame(AVFormatContext *oc, AVStream *st)
 {
     int ret;
     static struct SwsContext *sws_ctx;
@@ -331,7 +331,7 @@ static void write_video_frame(AVFormatContext *oc, AVStream *st)
                                          c->width, c->height, c->pix_fmt,
                                          sws_flags, NULL, NULL, NULL);
                 if (!sws_ctx) {
-                    fprintf(stderr,
+                    LOGI(LOG_LEVEL,
                             "Could not initialize the conversion context\n");
                     exit(1);
                 }
@@ -368,7 +368,7 @@ static void write_video_frame(AVFormatContext *oc, AVStream *st)
 
         ret = avcodec_encode_video2(c, &pkt, frame, &got_output);
         if (ret < 0) {
-            fprintf(stderr, "Error encoding video frame\n");
+            LOGI(LOG_LEVEL, "Error encoding video frame\n");
             exit(1);
         }
 
@@ -389,8 +389,8 @@ static void write_video_frame(AVFormatContext *oc, AVStream *st)
         }
     }
     if (ret != 0) {
-        fprintf(stderr, "Error while writing video frame\n");
-        exit(1);
+        LOGI(LOG_LEVEL, "Error while writing video frame\n");
+        return;
     }
     frame_count++;
 }
@@ -422,13 +422,14 @@ int mux(const char *filename)
     /* allocate the output media context */
     avformat_alloc_output_context2(&oc, NULL, NULL, filename);
     if (!oc) {
-        printf("Could not deduce output format from file extension: using MPEG.\n");
+        LOGI(LOG_LEVEL,"Could not deduce output format from file extension: using MPEG.\n");
         avformat_alloc_output_context2(&oc, NULL, "mpeg", filename);
     }
     if (!oc) {
         return 1;
     }
     fmt = oc->oformat;
+    LOGI(LOG_LEVEL, "Codec is %d\n", fmt->video_codec);
 
     /* Add the audio and video streams using the default format codecs
      * and initialize the codecs. */
@@ -453,14 +454,14 @@ int mux(const char *filename)
     /* open the output file, if needed */
     if (!(fmt->flags & AVFMT_NOFILE)) {
         if (avio_open(&oc->pb, filename, AVIO_FLAG_WRITE) < 0) {
-            fprintf(stderr, "Could not open '%s'\n", filename);
+            LOGI(LOG_LEVEL, "Could not open '%s'\n", filename);
             return 1;
         }
     }
 
     /* Write the stream header, if any. */
     if (avformat_write_header(oc, NULL) < 0) {
-        fprintf(stderr, "Error occurred when opening output file\n");
+        LOGI(LOG_LEVEL, "Error occurred when opening output file\n");
         return 1;
     }
 
