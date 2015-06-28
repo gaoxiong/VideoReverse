@@ -183,6 +183,30 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     LOGI(LOG_LEVEL, "[output]Could not open codec\n");
     return 1;
   }
+  /* allocate and init a re-usable frame */
+  frame_dst = avcodec_alloc_frame();
+  if (!frame_dst) {
+    LOGI(LOG_LEVEL, "[output]Could not allocate video frame\n");
+    return 1;
+  }
+  if (avpicture_alloc(&picture_dst, st_dst->codec->pix_fmt,
+                      st_dst->codec->width, st_dst->codec->height) < 0) {
+    LOGI(LOG_LEVEL, "[output]Could not allocate video picture\n");
+    return 1;
+  }
+  if (st_dst->codec->pix_fmt != PIX_FMT_YUV420P) {
+    ret = avpicture_alloc(&picture_dst, PIX_FMT_YUV420P,
+                          st_dst->codec->width,
+                          st_dst->codec->height);
+    if (ret < 0) {
+      LOGI(LOG_LEVEL, "[output]Could not allocate temporary picture\n");
+      return 1;
+    }
+  }
+
+  /* copy data and linesize picture pointers to frame */
+  *((AVPicture *)frame_dst) = picture_dst;
+
   //av_dump_format(formatContext_dst, 0, OUT_FMT_FILE, 1);
   /* open the output file, if needed */
   if (!(outputFormat_dst->flags & AVFMT_NOFILE)) {
@@ -238,9 +262,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
       last_pts += pts;
       last_dts += dts;
 #else
-      LOGI(LOG_LEVEL, "frame:%d\n", frameCount++);
-      av_write_frame(formatContext_dst, &pt_dst);
-      continue;
       ret = avcodec_decode_video2(codecContext_src, frame_src, &got_frame, &pt_src);
       if (ret < 0) {
         LOGI(LOG_LEVEL, "Error decoding video frame\n");
@@ -251,7 +272,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
              frameCount, frame_src->coded_picture_number,
              av_ts2timestr(frame_src->pts, &codecContext_src->time_base));
         /* encode the image */
-#if 0
         ret = avcodec_encode_video2(codecContext_dst, &pt_dst, frame_src, &got_output);
         if (ret < 0) {
           LOGI(LOG_LEVEL, "[output]Error encoding frame\n");
@@ -271,7 +291,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
           /* Write the compressed frame to the media file. */
           ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
         }
-#endif
       } else {
         LOGI(LOG_LEVEL, "got_frame:%d, n:%d\n", got_frame, frameCount);
       }

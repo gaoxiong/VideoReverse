@@ -279,7 +279,7 @@ void open_video(AVFormatContext *oc, AVCodec *codec, AVStream *st)
      * picture is needed too. It is then converted to the required
      * output format. */
     if (c->pix_fmt != PIX_FMT_YUV420P) {
-        ret = avpicture_alloc(&src_picture, PIX_FMT_YUV420P, c->width, c->height);
+        ret = avpicture_alloc(&dst_picture, PIX_FMT_YUV420P, c->width, c->height);
         if (ret < 0) {
             LOGI(LOG_LEVEL, "Could not allocate temporary picture\n");
             exit(1);
