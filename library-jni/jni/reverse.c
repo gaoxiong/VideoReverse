@@ -146,20 +146,20 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
 
     /* Put sample parameters. */
     st_dst->codec->codec_type = AVMEDIA_TYPE_VIDEO;
-    st_dst->codec->bit_rate = 400000;
+    st_dst->codec->bit_rate = 400000;//st_src->codec->bit_rate;
     /* Resolution must be a multiple of two. */
-    st_dst->codec->width    = 352;
-    st_dst->codec->height   = 288;
+    st_dst->codec->width    = st_src->codec->width;
+    st_dst->codec->height   = st_src->codec->height;
     /* timebase: This is the fundamental unit of time (in seconds) in terms
      * of which frame timestamps are represented. For fixed-fps content,
      * timebase should be 1/framerate and timestamp increments should be
      * identical to 1. */
-    st_dst->codec->time_base.den = STREAM_FRAME_RATE;
-    st_dst->codec->time_base.num = 1;
-    st_dst->codec->gop_size      = 12; /* emit one intra frame every twelve frames at most */
-    st_dst->codec->pix_fmt       = PIX_FMT_YUV420P;//STREAM_PIX_FMT;
-    st_dst->codec->qmin = 10;
-    st_dst->codec->qmax = 51;
+    st_dst->codec->time_base.den = STREAM_FRAME_RATE;//st_src->codec->time_base.den;
+    st_dst->codec->time_base.num = 1;//st_src->codec->time_base.num;
+    st_dst->codec->gop_size      = 12;//st_src->codec->gop_size;
+    st_dst->codec->pix_fmt       = PIX_FMT_YUV420P;//st_src->codec->pix_fmt;
+    st_dst->codec->qmin          = 10;//st_src->codec->qmin;
+    st_dst->codec->qmax          = 51;//st_src->codec->qmax;
     if (st_dst->codec->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
         /* just for testing, we also add B frames */
         st_dst->codec->max_b_frames = 2;
@@ -301,26 +301,26 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
           return 1;
         }
         if (got_output) {
-          printf("[output]Write frame %3d (size=%5d)\n", frameCount, pt_dst.size);
+          LOGI(LOG_LEVEL, "[output]Write frame %3d (size=%5d)\n", frameCount, pt_dst.size);
           if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
-            printf("[output]pts_src: %d\n", st_dst->codec->coded_frame->pts);
+            LOGI(LOG_LEVEL, "[output]pts_src: %d\n", st_dst->codec->coded_frame->pts);
             pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
                                       st_dst->codec->time_base,
                                       st_dst->time_base);
-            printf("[output]pts_dst: %d\n", pt_dst.pts);
+            LOGI(LOG_LEVEL, "[output]pts_dst: %d\n", pt_dst.pts);
           }
           if (st_dst->codec->coded_frame->key_frame) {
-            printf("[output] key_frame \n");
+            LOGI(LOG_LEVEL, "[output] key_frame \n");
             pt_dst.flags |= AV_PKT_FLAG_KEY;
           }
 
-          printf("[output] index: %d \n", st_dst->index);
+          LOGI(LOG_LEVEL, "[output] index: %d \n", st_dst->index);
           pt_dst.stream_index = st_dst->index;
 
           /* Write the compressed frame to the media file. */
           ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
           if (ret < 0) {
-            printf("[output] write frame failed: %d \n", ret);
+            LOGI(LOG_LEVEL, "[output] write frame failed: %d \n", ret);
           } else {
             frameCount++;
           }
@@ -694,7 +694,7 @@ int reverse(char *file_path_src, char *file_path_desc,
 
   codec_o = avcodec_find_encoder(AV_CODEC_ID_H264);
   if (!codec_o) {
-    fprintf(stderr, "Codec not found\n");
+    LOGI(LOG_LEVEL, "Codec not found\n");
     exit(1);
   }
 
@@ -709,7 +709,7 @@ int reverse(char *file_path_src, char *file_path_desc,
   video_enc_ctx->priv_data = video_dec_ctx->priv_data;
   /* open it */
   if (avcodec_open2(video_enc_ctx, codec_o, NULL) < 0) {
-    fprintf(stderr, "Could not open codec\n");
+    LOGI(LOG_LEVEL, "Could not open codec\n");
     exit(1);
   }
 
@@ -803,12 +803,12 @@ void encode_frame_to_dst(AVFrame *frame, int frameCount) {
   int got_output;
   ret = avcodec_encode_video2(video_enc_ctx, &pkt_o, frame, &got_output);
   if (ret < 0) {
-      fprintf(stderr, "Error encoding frame\n");
+      LOGI(LOG_LEVEL, "Error encoding frame\n");
       exit(1);
   }
 
   if (got_output) {
-      printf("Write frame %3d (size=%5d)\n", frameCount, pkt_o.size);
+      LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", frameCount, pkt_o.size);
       fwrite(pkt_o.data, 1, pkt_o.size, video_dst_file);
       av_free_packet(&pkt);
   }
