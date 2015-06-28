@@ -57,6 +57,9 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   AVOutputFormat *outputFormat_dst = NULL;
   AVPicture picture_dst;
 
+  AVPacketList *pktListHeader = NULL;
+  AVPacketList *pktListItem = NULL;
+
   int ret = -1;
   int vst_idx = -1;
   int video_outbuf_size_dst;
@@ -224,19 +227,17 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   //av_dump_format(formatContext_src, 0, SRC_FILE, 0);
   /* initialize packet, set data to NULL, let the demuxer fill it */
   AVPacket pt_src;
-  AVPacket pt_dst;
   frame_src = avcodec_alloc_frame();
   
   int frameCount = 0;
   int got_frame = -1, got_output = -1;
-  int64_t pts, dts;
-  int last_pts = 0;
-  int last_dts = 0;
   LOGI(LOG_LEVEL, "Start decoding video frame\n");
   while (1) {
     av_init_packet(&pt_src);
     pt_src.data = NULL;
     pt_src.size = 0;
+
+    AVPacket pt_dst;
     av_init_packet(&pt_dst);
     pt_dst.data = NULL;
     pt_dst.size = 0;
@@ -244,22 +245,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
       break;
     }
     if (pt_src.stream_index == vst_idx) {
-#if 0
-      pts = pt_src.pts;
-      pt_src.pts += last_pts;
-      dts = pt_src.dts;
-      pt_src.dts += last_dts;
-      if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE)
-        pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
-                                  st_dst->codec->time_base,
-                                  st_dst->time_base);
-      if (st_dst->codec->coded_frame->key_frame)
-        pt_dst.flags |= AV_PKT_FLAG_KEY;
-      ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
-      LOGI(LOG_LEVEL, "frame:%d, pts:%d, dts:%d\n", frameCount, last_pts, last_dts);
-      last_pts += pts;
-      last_dts += dts;
-#else
       ret = avcodec_decode_video2(st_src->codec, frame_src, &got_frame, &pt_src);
       if (ret < 0) {
         LOGI(LOG_LEVEL, "Error decoding video frame\n");
@@ -302,13 +287,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
         }
         if (got_output) {
           LOGI(LOG_LEVEL, "[output]Write frame %3d (size=%5d)\n", frameCount, pt_dst.size);
-          if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
-            LOGI(LOG_LEVEL, "[output]pts_src: %d\n", st_dst->codec->coded_frame->pts);
-            pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
-                                      st_dst->codec->time_base,
-                                      st_dst->time_base);
-            LOGI(LOG_LEVEL, "[output]pts_dst: %d\n", pt_dst.pts);
-          }
           if (st_dst->codec->coded_frame->key_frame) {
             LOGI(LOG_LEVEL, "[output] key_frame \n");
             pt_dst.flags |= AV_PKT_FLAG_KEY;
@@ -316,7 +294,23 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
 
           LOGI(LOG_LEVEL, "[output] index: %d \n", st_dst->index);
           pt_dst.stream_index = st_dst->index;
-
+#if 1
+          /* reverse */
+          av_dup_packet(&pt_dst);
+          pktListItem = av_malloc(sizeof(AVPacketList));
+          pktListItem->pkt = pt_dst;
+          pktListItem->next = pktListHeader;
+          pktListHeader = pktListItem;
+          frameCount++;
+#else
+          if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
+            LOGI(LOG_LEVEL, "[output]pts_src: %d\n",
+                 st_dst->codec->coded_frame->pts);
+            pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
+                                      st_dst->codec->time_base,
+                                      st_dst->time_base);
+            LOGI(LOG_LEVEL, "[output]pts_dst: %d, dts: %d\n", pt_dst.pts, pt_dst.dts);
+          }
           /* Write the compressed frame to the media file. */
           ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
           if (ret < 0) {
@@ -324,16 +318,30 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
           } else {
             frameCount++;
           }
+#endif
         }
       } else {
         LOGI(LOG_LEVEL, "got_frame:%d, n:%d\n", got_frame, frameCount);
       }
       //frame_dst->pts = frameCount;
-#endif
     } else {
       LOGI(LOG_LEVEL, "Not video frame.\n");
     }
   }
+#if 1
+  LOGI(LOG_LEVEL, "...start write to file...");
+  frameCount = 1;
+  while (pktListHeader) {
+    pktListHeader->pkt.pts = frameCount;
+    pktListHeader->pkt.dts = frameCount++;
+    ret = av_interleaved_write_frame(formatContext_dst, &pktListHeader->pkt);
+    if (ret < 0) {
+      LOGI(LOG_LEVEL, "[output] write frame failed: %d \n", ret);
+    }
+    av_free_packet(&pktListHeader->pkt);
+    pktListHeader = pktListHeader->next;
+  }
+#endif
   av_write_trailer(formatContext_dst);
   LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
 end:
