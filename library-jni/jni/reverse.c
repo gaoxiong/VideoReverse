@@ -50,8 +50,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   AVFormatContext *formatContext_dst = NULL;
   AVStream *st_src = NULL;
   AVStream *st_dst = NULL;
-  AVCodecContext *codecContext_src = NULL;
-  AVCodecContext *codecContext_dst = NULL;
   AVCodec *codec_src = NULL;
   AVCodec *codec_dst = NULL;
   AVFrame *frame_src = NULL;
@@ -94,17 +92,16 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     goto end;
   }
   /* retrieve decodec context for video stream */
-  codecContext_src = st_src->codec;
-  if (codecContext_src == NULL) {
+  if (st_src->codec == NULL) {
     LOGI(LOG_LEVEL, "decodec context is NULL\n");
     goto end;
   }
-  LOGI(LOG_LEVEL, "codec_is is %d\n", codecContext_src->codec_id);
+  LOGI(LOG_LEVEL, "codec_is is %d\n", st_src->codec->codec_id);
   
-  codec_src = avcodec_find_decoder(codecContext_src->codec_id);
-  if ((ret = avcodec_open2(codecContext_src, codec_src, NULL)) < 0) {
+  codec_src = avcodec_find_decoder(st_src->codec->codec_id);
+  if ((ret = avcodec_open2(st_src->codec, codec_src, NULL)) < 0) {
     LOGI(LOG_LEVEL, "Failed to open %s codec\n", 
-         av_get_media_type_string(codecContext_src->codec_id));
+         av_get_media_type_string(st_src->codec->codec_id));
     goto end;
   }
   LOGI(LOG_LEVEL, "codec name is %s\n", codec_src->name);
@@ -195,6 +192,7 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     return 1;
   }
   if (st_dst->codec->pix_fmt != PIX_FMT_YUV420P) {
+    LOGI(LOG_LEVEL, "[output]pix_fmt: %d\n", st_dst->codec->pix_fmt);
     ret = avpicture_alloc(&picture_dst, PIX_FMT_YUV420P,
                           st_dst->codec->width,
                           st_dst->codec->height);
@@ -203,7 +201,6 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
       return 1;
     }
   }
-
   /* copy data and linesize picture pointers to frame */
   *((AVPicture *)frame_dst) = picture_dst;
 
@@ -220,6 +217,7 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
     LOGI(LOG_LEVEL, "[output]Error occurred when opening output file\n");
     return 1;
   }
+  static struct SwsContext *sws_ctx;
   /************ end of init encoder ******************/
   
   /* dump input information to stderr */
@@ -251,18 +249,18 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
       pt_src.pts += last_pts;
       dts = pt_src.dts;
       pt_src.dts += last_dts;
-      if (codecContext_dst->coded_frame->pts != AV_NOPTS_VALUE)
-        pt_dst.pts = av_rescale_q(codecContext_dst->coded_frame->pts,
-                                  codecContext_dst->time_base,
+      if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE)
+        pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
+                                  st_dst->codec->time_base,
                                   st_dst->time_base);
-      if (codecContext_dst->coded_frame->key_frame)
+      if (st_dst->codec->coded_frame->key_frame)
         pt_dst.flags |= AV_PKT_FLAG_KEY;
       ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
       LOGI(LOG_LEVEL, "frame:%d, pts:%d, dts:%d\n", frameCount, last_pts, last_dts);
       last_pts += pts;
       last_dts += dts;
 #else
-      ret = avcodec_decode_video2(codecContext_src, frame_src, &got_frame, &pt_src);
+      ret = avcodec_decode_video2(st_src->codec, frame_src, &got_frame, &pt_src);
       if (ret < 0) {
         LOGI(LOG_LEVEL, "Error decoding video frame\n");
         return 1;
@@ -270,33 +268,68 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
       if (got_frame) {
         LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
              frameCount, frame_src->coded_picture_number,
-             av_ts2timestr(frame_src->pts, &codecContext_src->time_base));
+             av_ts2timestr(frame_src->pts, &st_src->codec->time_base));
         /* encode the image */
-        ret = avcodec_encode_video2(codecContext_dst, &pt_dst, frame_src, &got_output);
+        {
+          /* as we only generate a YUV420P picture, we must convert it
+          * to the codec pixel format if needed */
+          if (!sws_ctx) {
+            sws_ctx = sws_getContext(st_src->codec->width,
+                                     st_src->codec->height,
+                                     st_src->codec->pix_fmt,
+                                     st_dst->codec->width,
+                                     st_dst->codec->height,
+                                     st_dst->codec->pix_fmt,
+                                     SWS_BICUBIC, NULL, NULL, NULL);
+            if (!sws_ctx) {
+              LOGI(LOG_LEVEL, "Could not initialize the conversion context\n");
+              return 1;
+            }
+          }
+          sws_scale(sws_ctx,
+                    (const uint8_t * const *)frame_src->data,
+                    frame_src->linesize,
+                    0,
+                    st_dst->codec->height,
+                    picture_dst.data,
+                    picture_dst.linesize);
+        }
+        av_free_packet(&pt_src);
+        ret = avcodec_encode_video2(st_dst->codec, &pt_dst, frame_dst, &got_output);
         if (ret < 0) {
-          LOGI(LOG_LEVEL, "[output]Error encoding frame\n");
+          LOGI(LOG_LEVEL, "[output]Error encoding frame: %s\n", av_err2str(ret));
           return 1;
         }
         if (got_output) {
           printf("[output]Write frame %3d (size=%5d)\n", frameCount, pt_dst.size);
-          if (codecContext_dst->coded_frame->pts != AV_NOPTS_VALUE)
-            pt_dst.pts = av_rescale_q(codecContext_dst->coded_frame->pts,
-                                      codecContext_dst->time_base,
+          if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
+            printf("[output]pts_src: %d\n", st_dst->codec->coded_frame->pts);
+            pt_dst.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
+                                      st_dst->codec->time_base,
                                       st_dst->time_base);
-          if (codecContext_dst->coded_frame->key_frame)
+            printf("[output]pts_dst: %d\n", pt_dst.pts);
+          }
+          if (st_dst->codec->coded_frame->key_frame) {
+            printf("[output] key_frame \n");
             pt_dst.flags |= AV_PKT_FLAG_KEY;
+          }
 
+          printf("[output] index: %d \n", st_dst->index);
           pt_dst.stream_index = st_dst->index;
 
           /* Write the compressed frame to the media file. */
           ret = av_interleaved_write_frame(formatContext_dst, &pt_dst);
+          if (ret < 0) {
+            printf("[output] write frame failed: %d \n", ret);
+          } else {
+            frameCount++;
+          }
         }
       } else {
         LOGI(LOG_LEVEL, "got_frame:%d, n:%d\n", got_frame, frameCount);
       }
       //frame_dst->pts = frameCount;
 #endif
-      frameCount++;
     } else {
       LOGI(LOG_LEVEL, "Not video frame.\n");
     }
@@ -304,17 +337,17 @@ int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_F
   av_write_trailer(formatContext_dst);
   LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
 end:
-  if (st_dst) {
+  if (st_dst && st_src->codec) {
     avcodec_close(st_dst->codec);
-  }
-  if (codecContext_src) {
-    avcodec_close(codecContext_src);
   }
   if (formatContext_src) {
     avformat_close_input(&formatContext_src);
   }
   if (frame_src) {
     av_free(frame_src);
+  }
+  if (frame_dst) {
+    av_free(frame_dst);
   }
   return 0;
 }
