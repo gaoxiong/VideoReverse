@@ -45,57 +45,62 @@ int ret = 0, got_frame;
 #define STREAM_FRAME_RATE 25 /* 25 images/s */
 #define STREAM_PIX_FMT PIX_FMT_YUV420P /* default pix_fmt */
 
-bool SaveFrame(int nszBuffer, uint8_t *buffer, const char* cOutFileName)
+int SaveFrame(int nszBuffer, uint8_t *buffer, const char* cOutFileName)
 {
-  bool bRet = false;
+  int bRet = 0;
 
   if( nszBuffer > 0 )
   {
     FILE *pFile = fopen(cOutFileName, "wb");
     if(pFile)
     {
+      LOGI(LOG_LEVEL, "write to file");
       fwrite(buffer, sizeof(uint8_t), nszBuffer, pFile);
-      bRet = true;
+      bRet = 1;
       fclose(pFile);
     }
   }
    return bRet;
 }
 
-bool WriteJPEG (AVCodecContext *pCodecCtx, AVFrame *pFrame, 
-                const char* cFileName, PixelFormat pix, 
+int WriteJPEG (AVCodecContext *pCodecCtx, AVFrame *pFrame,
+                const char* cFileName, enum PixelFormat pix,
                 uint8_t *buffer, int numBytes)
 {
-   bool bRet = false;
-   AVCodec *pMJPEGCodec=NULL;
-   AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
-   if (pMJPEGCtx)
-   {
-      pMJPEGCtx->bit_rate = pCodecCtx->bit_rate;
-      pMJPEGCtx->width = pCodecCtx->width;
-      pMJPEGCtx->height = pCodecCtx->height;
-      pMJPEGCtx->pix_fmt = pix;
-      pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
-      pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
-      pMJPEGCtx->time_base.num = pCodecCtx->time_base.num;
-      pMJPEGCtx->time_base.den = pCodecCtx->time_base.den;
-      pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
-
-      if( pMJPEGCodec && (avcodec_open( pMJPEGCtx, pMJPEGCodec) >= 0) )
-      {
-         pMJPEGCtx->qmin = pMJPEGCtx->qmax = 3;
-         pMJPEGCtx->mb_lmin = pMJPEGCtx->lmin = pMJPEGCtx->qmin * FF_QP2LAMBDA;
-         pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
-         pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
-         pFrame->quality = 10;
-         pFrame->pts = 0;
-         int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, pFrame);
-         if( SaveFrame(szBufferActual, buffer, cFileName ) )
-            bRet = true;
-
-         avcodec_close(pMJPEGCtx);
-      }
-   }
+   int bRet = 0;
+//   AVCodec *pMJPEGCodec=NULL;
+//   AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
+//   if (pMJPEGCtx)
+//   {
+//      pMJPEGCtx->bit_rate = pCodecCtx->bit_rate;
+//      pMJPEGCtx->width = pCodecCtx->width;
+//      pMJPEGCtx->height = pCodecCtx->height;
+//      pMJPEGCtx->pix_fmt = pix;
+//      pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
+//      pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+//      pMJPEGCtx->time_base.num = pCodecCtx->time_base.num;
+//      pMJPEGCtx->time_base.den = pCodecCtx->time_base.den;
+//      pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
+//
+//      if( pMJPEGCodec && (avcodec_open( pMJPEGCtx, pMJPEGCodec) >= 0) )
+//      {
+//         pMJPEGCtx->qmin = pMJPEGCtx->qmax = 3;
+//         pMJPEGCtx->mb_lmin = pMJPEGCtx->lmin = pMJPEGCtx->qmin * FF_QP2LAMBDA;
+//         pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
+//         pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
+//         pFrame->quality = 10;
+//         pFrame->pts = 0;
+//         int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, pFrame);
+//         if( SaveFrame(szBufferActual, buffer, cFileName ) )
+//            bRet = 1;
+//
+//         avcodec_close(pMJPEGCtx);
+//      } else {
+//        LOGI(LOG_LEVEL, "Can not find decoder!\n");
+//      }
+//   } else {
+//      LOGI(LOG_LEVEL, "pMJPEGCtx is 0!");
+//   }
    return bRet;
 }
 
@@ -107,7 +112,6 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER) {
   AVCodec *codec_src = NULL;
   AVFrame *frame_src = NULL;
   char DST_FILE[100];
-  strcpy(DST_FILE, TMP_FOLDER);
 
   AVPacketList *pktListHeader = NULL;
   AVPacketList *pktListItem = NULL;
@@ -164,6 +168,36 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER) {
   /* initialize packet, set data to NULL, let the demuxer fill it */
   AVPacket pt_src;
   frame_src = avcodec_alloc_frame();
+
+  /* for encoder */
+  AVCodec *pMJPEGCodec=NULL;
+  AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
+  if (pMJPEGCtx)
+  {
+    pMJPEGCtx->bit_rate = st_src->codec->bit_rate;
+    pMJPEGCtx->width = st_src->codec->width;
+    pMJPEGCtx->height = st_src->codec->height;
+    pMJPEGCtx->pix_fmt = PIX_FMT_YUVJ420P;
+    pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
+    pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+    pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
+    pMJPEGCtx->time_base.den = st_src->codec->time_base.den;
+    pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
+
+    if( pMJPEGCodec && (avcodec_open( pMJPEGCtx, pMJPEGCodec) >= 0) )
+    {
+      pMJPEGCtx->qmin = pMJPEGCtx->qmax = 3;
+      pMJPEGCtx->mb_lmin = pMJPEGCtx->lmin = pMJPEGCtx->qmin * FF_QP2LAMBDA;
+      pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
+      pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
+    } else {
+      LOGI(LOG_LEVEL, "Can not find decoder!\n");
+      goto end;
+    }
+  } else {
+    LOGI(LOG_LEVEL, "pMJPEGCtx is 0!");
+    goto end;
+  }
   
   int got_frame = -1, got_output = -1;
   LOGI(LOG_LEVEL, "Start decoding video frame\n");
@@ -189,6 +223,9 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER) {
         LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
              frameCount, frame_src->coded_picture_number,
              av_ts2timestr(frame_src->pts, &st_src->codec->time_base));
+
+        memset(DST_FILE, 0, strlen(DST_FILE));
+        strcpy(DST_FILE, TMP_FOLDER);
         strcat(DST_FILE, "//");
         char frame_count_str[8];
         sprintf(frame_count_str, "%d", frameCount++);
@@ -199,13 +236,18 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER) {
                                           st_src->codec->width, 
                                           st_src->codec->height);
         uint8_t *buffer=(uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
-        bool bret = WriteJPEG(st_src->codec, decode_picture, 
-                              DST_FILE, PIX_FMT_YUVJ420P, 
-                              buffer, numBytes);
+
+        frame_src->quality = 10;
+        frame_src->pts = 0;
+        int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, frame_src);
+        if (SaveFrame(szBufferActual, buffer, DST_FILE))
+          ret = 1;
+
         av_free_packet(&pt_src);
       }
     }
   }
+  avcodec_close(pMJPEGCtx);
   LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
 end:
   if (formatContext_src) {
@@ -218,6 +260,7 @@ end:
 }
 
 int encodeJPG2Video(const char* TMP_FOLDER, int frameCount, const char* OUT_FMT_FILE) {
+  LOGI(LOG_LEVEL, "encodeJPG2Video: %d\n", frameCount);
   return 0;
 }
 
