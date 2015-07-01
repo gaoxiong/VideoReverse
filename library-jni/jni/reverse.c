@@ -45,6 +45,188 @@ int ret = 0, got_frame;
 #define STREAM_FRAME_RATE 25 /* 25 images/s */
 #define STREAM_PIX_FMT PIX_FMT_YUV420P /* default pix_fmt */
 
+bool SaveFrame(int nszBuffer, uint8_t *buffer, const char* cOutFileName)
+{
+  bool bRet = false;
+
+  if( nszBuffer > 0 )
+  {
+    FILE *pFile = fopen(cOutFileName, "wb");
+    if(pFile)
+    {
+      fwrite(buffer, sizeof(uint8_t), nszBuffer, pFile);
+      bRet = true;
+      fclose(pFile);
+    }
+  }
+   return bRet;
+}
+
+bool WriteJPEG (AVCodecContext *pCodecCtx, AVFrame *pFrame, 
+                const char* cFileName, PixelFormat pix, 
+                uint8_t *buffer, int numBytes)
+{
+   bool bRet = false;
+   AVCodec *pMJPEGCodec=NULL;
+   AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
+   if (pMJPEGCtx)
+   {
+      pMJPEGCtx->bit_rate = pCodecCtx->bit_rate;
+      pMJPEGCtx->width = pCodecCtx->width;
+      pMJPEGCtx->height = pCodecCtx->height;
+      pMJPEGCtx->pix_fmt = pix;
+      pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
+      pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
+      pMJPEGCtx->time_base.num = pCodecCtx->time_base.num;
+      pMJPEGCtx->time_base.den = pCodecCtx->time_base.den;
+      pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
+
+      if( pMJPEGCodec && (avcodec_open( pMJPEGCtx, pMJPEGCodec) >= 0) )
+      {
+         pMJPEGCtx->qmin = pMJPEGCtx->qmax = 3;
+         pMJPEGCtx->mb_lmin = pMJPEGCtx->lmin = pMJPEGCtx->qmin * FF_QP2LAMBDA;
+         pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
+         pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
+         pFrame->quality = 10;
+         pFrame->pts = 0;
+         int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, pFrame);
+         if( SaveFrame(szBufferActual, buffer, cFileName ) )
+            bRet = true;
+
+         avcodec_close(pMJPEGCtx);
+      }
+   }
+   return bRet;
+}
+
+
+
+int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER) {
+  AVFormatContext *formatContext_src = NULL;
+  AVStream *st_src = NULL;
+  AVCodec *codec_src = NULL;
+  AVFrame *frame_src = NULL;
+  char DST_FILE[100];
+  strcpy(DST_FILE, TMP_FOLDER);
+
+  AVPacketList *pktListHeader = NULL;
+  AVPacketList *pktListItem = NULL;
+
+  int ret = -1;
+  int vst_idx = -1;
+  int frameCount = 0;
+  int video_outbuf_size_dst;
+  static uint8_t *video_outbuf_dst;
+  
+  /* open input file, and allocated format context */
+  if (avformat_open_input(&formatContext_src, SRC_FILE, NULL, NULL) < 0) {
+    LOGI(LOG_LEVEL, "Could not open source file %s\n", SRC_FILE);
+    goto end;
+  }
+  /* retrieve stream information */
+  if (avformat_find_stream_info(formatContext_src, NULL) < 0) {
+    LOGI(LOG_LEVEL, "Could not find stream information\n");
+    goto end;
+  }
+
+  /* retrieve video stream index */
+  ret = av_find_best_stream(formatContext_src, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+  if (ret < 0) {
+    LOGI(LOG_LEVEL, "Could not find video stream information\n");
+    goto end;
+  }
+  vst_idx = ret;
+  if (formatContext_src == NULL) {
+    LOGI(LOG_LEVEL, "format context is NULL\n");
+    goto end;
+  }
+  /* retrieve video stream */
+  st_src = formatContext_src->streams[ret];
+  if (st_src == NULL) {
+    LOGI(LOG_LEVEL, "video stream is NULL\n");
+    goto end;
+  }
+  /* retrieve decodec context for video stream */
+  if (st_src->codec == NULL) {
+    LOGI(LOG_LEVEL, "decodec context is NULL\n");
+    goto end;
+  }
+  LOGI(LOG_LEVEL, "codec_is is %d\n", st_src->codec->codec_id);
+  
+  codec_src = avcodec_find_decoder(st_src->codec->codec_id);
+  if ((ret = avcodec_open2(st_src->codec, codec_src, NULL)) < 0) {
+    LOGI(LOG_LEVEL, "Failed to open %s codec\n", 
+         av_get_media_type_string(st_src->codec->codec_id));
+    goto end;
+  }
+  LOGI(LOG_LEVEL, "codec name is %s\n", codec_src->name);
+
+  /* initialize packet, set data to NULL, let the demuxer fill it */
+  AVPacket pt_src;
+  frame_src = avcodec_alloc_frame();
+  
+  int got_frame = -1, got_output = -1;
+  LOGI(LOG_LEVEL, "Start decoding video frame\n");
+  while (1) {
+    av_init_packet(&pt_src);
+    pt_src.data = NULL;
+    pt_src.size = 0;
+
+    AVPacket pt_dst;
+    av_init_packet(&pt_dst);
+    pt_dst.data = NULL;
+    pt_dst.size = 0;
+    if (av_read_frame(formatContext_src, &pt_src) < 0) {
+      break;
+    }
+    if (pt_src.stream_index == vst_idx) {
+      ret = avcodec_decode_video2(st_src->codec, frame_src, &got_frame, &pt_src);
+      if (ret < 0) {
+        LOGI(LOG_LEVEL, "Error decoding video frame\n");
+        return frameCount;
+      }
+      if (got_frame) {
+        LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
+             frameCount, frame_src->coded_picture_number,
+             av_ts2timestr(frame_src->pts, &st_src->codec->time_base));
+        strcat(DST_FILE, "//");
+        char frame_count_str[8];
+        sprintf(frame_count_str, "%d", frameCount++);
+        strcat(DST_FILE, frame_count_str);
+        strcat(DST_FILE, ".jpg");
+        LOGI(LOG_LEVEL, "output file name: %s\n", DST_FILE);
+        int numBytes = avpicture_get_size(PIX_FMT_YUVJ420P, 
+                                          st_src->codec->width, 
+                                          st_src->codec->height);
+        uint8_t *buffer=(uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+        bool bret = WriteJPEG(st_src->codec, decode_picture, 
+                              DST_FILE, PIX_FMT_YUVJ420P, 
+                              buffer, numBytes);
+        av_free_packet(&pt_src);
+      }
+    }
+  }
+  LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
+end:
+  if (formatContext_src) {
+    avformat_close_input(&formatContext_src);
+  }
+  if (frame_src) {
+    av_free(frame_src);
+  }
+  return frameCount;
+}
+
+int encodeJPG2Video(const char* TMP_FOLDER, int frameCount, const char* OUT_FMT_FILE) {
+  return 0;
+}
+
+int doReverseViaBmp(const char* SRC_FILE, const char* TMP_FOLDER, const char* OUT_FMT_FILE) {
+  av_register_all();
+  int frameCount = decode2JPG(SRC_FILE, TMP_FOLDER);
+  return encodeJPG2Video(TMP_FOLDER, frameCount, OUT_FMT_FILE);
+}
+
 int doReverse2(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FILE) {
   AVFormatContext *formatContext_src = NULL;
   AVFormatContext *formatContext_dst = NULL;
@@ -595,11 +777,13 @@ int reverse(char *file_path_src, char *file_path_desc,
             int subtitle_stream_no) {
   const char *OUT_FILE = "/sdcard/outfile.h264";
   const char *OUT_FMT_FILE = "/sdcard/outfmtfile.mp4";
+  const char *TMP_FOLDER = "/sdcard/test";
   const char *MUX_TEST_FILE = "/sdcard/mux_test_file.mp4";
   const char *VIDEO_ENCODING_TEST_FILE = "/sdcard/video_encoding.mp4";
-  doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
+  //doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
   //mux(MUX_TEST_FILE);
   //video_encode_example(VIDEO_ENCODING_TEST_FILE, AV_CODEC_ID_MPEG1VIDEO);
+  doReverseViaBmp(file_path_src, TMP_FOLDER, OUT_FMT_FILE);
   return;
   
   char *src_filename = NULL;
