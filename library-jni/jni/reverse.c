@@ -172,14 +172,19 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
   AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
   if (pMJPEGCtx)
   {
-    codecContext->bit_rate = pMJPEGCtx->bit_rate = st_src->codec->bit_rate;
-    codecContext->width = pMJPEGCtx->width = st_src->codec->width;
-    codecContext->height = pMJPEGCtx->height = st_src->codec->height;
+    pMJPEGCtx->bit_rate = st_src->codec->bit_rate;
+    codecContext->bit_rate = pMJPEGCtx->bit_rate;
+    pMJPEGCtx->width = st_src->codec->width;
+    codecContext->width = pMJPEGCtx->width;
+    pMJPEGCtx->height = st_src->codec->height;
+    codecContext->height = pMJPEGCtx->height;
     pMJPEGCtx->pix_fmt = PIX_FMT_YUVJ420P;
     pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
     pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
-    codecContext->time_base.num = pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
-    codecContext->time_base.den = pMJPEGCtx->time_base.den = st_src->codec->time_base.den;
+    pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
+    codecContext->time_base.num = pMJPEGCtx->time_base.num;
+    pMJPEGCtx->time_base.den = st_src->codec->time_base.den;
+    codecContext->time_base.den = pMJPEGCtx->time_base.den;
     pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
 
     if( pMJPEGCodec && (avcodec_open( pMJPEGCtx, pMJPEGCodec) >= 0) )
@@ -197,7 +202,8 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
     goto end;
   }
   
-  int got_frame = -1, got_output = -1;
+  int got_frame = -1, got_output = -1, numBytes = 0;
+  uint8_t *buffer = NULL;
   LOGI(LOG_LEVEL, "Start decoding video frame\n");
   while (1) {
     av_init_packet(&pt_src);
@@ -215,7 +221,7 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
       ret = avcodec_decode_video2(st_src->codec, frame_src, &got_frame, &pt_src);
       if (ret < 0) {
         LOGI(LOG_LEVEL, "Error decoding video frame\n");
-        return frameCount;
+        goto end;
       }
       if (got_frame) {
         LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
@@ -226,18 +232,24 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
         strcpy(DST_FILE, TMP_FOLDER);
         strcat(DST_FILE, "//");
         char frame_count_str[8];
-        LOGI(LOG_LEVEL, frame_count_str, "%d", frameCount++);
+        snprintf(frame_count_str, 8, "%d", frameCount++);
+        //itoa(frameCount++, frame_count_str, 10);
+        LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
         strcat(DST_FILE, frame_count_str);
         strcat(DST_FILE, ".jpg");
         LOGI(LOG_LEVEL, "output file name: %s\n", DST_FILE);
-        int numBytes = avpicture_get_size(PIX_FMT_YUVJ420P, 
+        numBytes = avpicture_get_size(PIX_FMT_YUVJ420P,
                                           st_src->codec->width, 
                                           st_src->codec->height);
-        uint8_t *buffer=(uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
-
+        if (buffer == NULL) {
+          buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+        } else {
+          memset(buffer, 0, numBytes * sizeof(uint8_t));
+        }
         frame_src->quality = 10;
         frame_src->pts = 0;
         int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, frame_src);
+        LOGI(LOG_LEVEL, "szBufferActual: %d\n", szBufferActual);
         if (SaveFrame(szBufferActual, buffer, DST_FILE))
           ret = 1;
 
@@ -359,14 +371,15 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
   uint8_t *buffer = (uint8_t *)av_malloc(nbytes * sizeof(uint8_t));
 
   /* encode 1 second of video */
-  int i;
   frameCount = 0;
   for(i = frameCount; i > 0; i--) {
       memset(DST_FILE, 0, strlen(DST_FILE));
       strcpy(DST_FILE, TMP_FOLDER);
       strcat(DST_FILE, "//");
       char frame_count_str[8];
-      LOGI(LOG_LEVEL, frame_count_str, "%d", i);
+      snprintf(frame_count_str, 8, "%d", frameCount);
+      //itoa(frameCount++, frame_count_str, 10);
+      LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
       strcat(DST_FILE, frame_count_str);
       strcat(DST_FILE, ".jpg");
       pictureF = fopen(DST_FILE, "wb");
