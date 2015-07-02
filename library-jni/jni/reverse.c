@@ -272,96 +272,135 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
                      const char* OUT_FMT_FILE, AVCodecContext *codecContext) {
   LOGI(LOG_LEVEL, "encodeJPG2Video: %d\n", frameCount);
   
-  AVCodec *codec;
-  AVCodecContext *c= NULL;
+  AVFormatContext *formatContext_dst = NULL;
+  AVCodec *codec_dst;
+  AVStream *st_dst;
+  AVFrame *frame_dst;
+  AVPicture picture_dst;
   int i, ret, x, y, got_output;
   FILE *f, *tmpF;
   FILE *pictureF;
-  AVFrame *frame;
   AVPacket pkt;
   char DST_FILE[100];
   uint8_t endcode[] = { 0, 0, 1, 0xb7 };
 
+  
+  /****************** start of encoder init ************************/
+  /* allocate the output media context */
+  /* init AVFormatContext */
+  avformat_alloc_output_context2(&formatContext_dst, NULL, NULL, OUT_FMT_FILE);
+  if (!formatContext_dst) {
+    LOGI(LOG_LEVEL, "[output]Could not deduce output format from file extension: using MPEG.\n");
+    avformat_alloc_output_context2(&formatContext_dst, NULL, "mpeg", OUT_FMT_FILE);
+  }
+  if (!formatContext_dst) {
+    return 1;
+  }
+
   LOGI(LOG_LEVEL, "Encode video file %s\n", OUT_FMT_FILE);
-  int codec_id = AV_CODEC_ID_MPEG4;
+  int codec_id = formatContext_dst->oformat->video_codec;
 
   /* find the mpeg1 video encoder */
-  codec = avcodec_find_encoder(codec_id);
-  if (!codec) {
+  codec_dst = avcodec_find_encoder(codec_id);
+  if (!codec_dst) {
       LOGI(LOG_LEVEL, "Codec not found\n");
       return 0;
   }
+  /* init AVStream */
+  st_dst = avformat_new_stream(formatContext_dst, codec_dst);
+  if (!st_dst) {
+    LOGI(LOG_LEVEL, "[output]Could not allocate stream\n");
+    return 1;
+  }
+  st_dst->id = 1;
+  if (formatContext_dst->oformat->flags & AVFMT_GLOBALHEADER)
+    st_dst->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+  
+  /* init AVCodecContext */
+  avcodec_get_context_defaults3(st_dst->codec, codec_dst);
+  {
+    /* init AVCodecContext for open */
+    st_dst->codec->codec_id = codec_id;
 
-  c = avcodec_alloc_context3(codec);
-
-  /* put sample parameters */
-  c->bit_rate = codecContext->bit_rate;
-  /* resolution must be a multiple of two */
-  c->width = codecContext->width;
-  c->height = codecContext->height;
-  /* frames per second */
-  c->time_base= (AVRational){1,25};
-  c->gop_size = 10; /* emit one intra frame every ten frames */
-  c->max_b_frames=1;
-  c->pix_fmt = PIX_FMT_YUV420P;
-
-  if(codec_id == AV_CODEC_ID_H264)
-      av_opt_set(c->priv_data, "preset", "slow", 0);
+    /* Put sample parameters. */
+    st_dst->codec->codec_type = AVMEDIA_TYPE_VIDEO;
+    st_dst->codec->bit_rate = codecContext->bit_rate;//st_src->codec->bit_rate;
+    /* Resolution must be a multiple of two. */
+    st_dst->codec->width    = codecContext->width;
+    st_dst->codec->height   = codecContext->height;
+    /* timebase: This is the fundamental unit of time (in seconds) in terms
+     * of which frame timestamps are represented. For fixed-fps content,
+     * timebase should be 1/framerate and timestamp increments should be
+     * identical to 1. */
+    st_dst->codec->time_base.den = STREAM_FRAME_RATE;//st_src->codec->time_base.den;
+    st_dst->codec->time_base.num = 1;//st_src->codec->time_base.num;
+    st_dst->codec->gop_size      = 12;//st_src->codec->gop_size;
+    st_dst->codec->pix_fmt       = PIX_FMT_YUV420P;//st_src->codec->pix_fmt;
+    st_dst->codec->qmin          = 10;//st_src->codec->qmin;
+    st_dst->codec->qmax          = 51;//st_src->codec->qmax;
+    if (st_dst->codec->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
+        /* just for testing, we also add B frames */
+        st_dst->codec->max_b_frames = 2;
+    }
+    if (st_dst->codec->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
+        /* Needed to avoid using macroblocks in which some coeffs overflow.
+         * This does not happen with normal video, it just happens here as
+         * the motion of the chroma plane does not match the luma plane. */
+        st_dst->codec->mb_decision = 2;
+    }
+    /* Some formats want stream headers to be separate. */
+    if (formatContext_dst->oformat->flags & AVFMT_GLOBALHEADER)
+        st_dst->codec->flags |= CODEC_FLAG_GLOBAL_HEADER;
+  }
 
   /* open it */
-  if (avcodec_open2(c, codec, NULL) < 0) {
+  if (avcodec_open2(st_dst->codec, codec_dst, NULL) < 0) {
       LOGI(LOG_LEVEL, "Could not open codec\n");
       return 0;
   }
 
-  f = fopen(OUT_FMT_FILE, "wb");
-  if (!f) {
-      LOGI(LOG_LEVEL, "Could not open %s\n", OUT_FMT_FILE);
-      return 0;
-  }
-
-  frame = avcodec_alloc_frame();
-  if (!frame) {
+  frame_dst = avcodec_alloc_frame();
+  if (!frame_dst) {
       LOGI(LOG_LEVEL, "Could not allocate video frame\n");
       return 0;
   }
-  frame->format = c->pix_fmt;
-  frame->width  = c->width;
-  frame->height = c->height;
-
-  /* the image can be allocated by any means and av_image_alloc() is
-   * just the most convenient way if av_malloc() is to be used */
-  ret = av_image_alloc(frame->data, frame->linesize, c->width, c->height,
-                       c->pix_fmt, 32);
-  if (ret < 0) {
-      LOGI(LOG_LEVEL, "Could not allocate raw picture buffer\n");
-      return 0;
-  }
-  
-  /* allocate and init a re-usable frame */
-  AVFrame* frame_pic = avcodec_alloc_frame();
-  AVPicture picture_pic;
-  if (!frame_pic) {
-    LOGI(LOG_LEVEL, "[output]Could not allocate video frame\n");
-    return 1;
-  }
-  if (avpicture_alloc(&picture_pic, c->pix_fmt,
-                      c->width, c->height) < 0) {
+  if (avpicture_alloc(&picture_dst, st_dst->codec->pix_fmt,
+                      st_dst->codec->width, st_dst->codec->height) < 0) {
     LOGI(LOG_LEVEL, "[output]Could not allocate video picture\n");
     return 1;
   }
-  if (c->pix_fmt != PIX_FMT_YUV420P) {
-    LOGI(LOG_LEVEL, "[output]pix_fmt: %d\n", c->pix_fmt);
-    ret = avpicture_alloc(&picture_pic, PIX_FMT_YUV420P,
-                          c->width,
-                          c->height);
+  if (st_dst->codec->pix_fmt != PIX_FMT_YUV420P) {
+    LOGI(LOG_LEVEL, "[output]pix_fmt: %d\n", st_dst->codec->pix_fmt);
+    ret = avpicture_alloc(&picture_dst, PIX_FMT_YUV420P,
+                          st_dst->codec->width,
+                          st_dst->codec->height);
     if (ret < 0) {
       LOGI(LOG_LEVEL, "[output]Could not allocate temporary picture\n");
       return 1;
     }
   }
   /* copy data and linesize picture pointers to frame */
-  *((AVPicture *)frame_pic) = picture_pic;
+  *((AVPicture *)frame_dst) = picture_dst;
+
+  //av_dump_format(formatContext_dst, 0, OUT_FMT_FILE, 1);
+  /* open the output file, if needed */
+  if (!(formatContext_dst->oformat->flags & AVFMT_NOFILE)) {
+    if (avio_open(&formatContext_dst->pb, OUT_FMT_FILE, AVIO_FLAG_WRITE) < 0) {
+      LOGI(LOG_LEVEL, "[output]Could not open '%s'\n", OUT_FMT_FILE);
+      return 1;
+    }
+  }
+  /* Write the stream header, if any. */
+  if (avformat_write_header(formatContext_dst, NULL) < 0) {
+    LOGI(LOG_LEVEL, "[output]Error occurred when opening output file\n");
+    return 1;
+  }
+  static struct SwsContext *sws_ctx;
+  /************ end of init encoder ******************/
+  
+  /* allocate and init a re-usable frame */
+  AVFrame* frame_pic = avcodec_alloc_frame();
+  AVPicture picture_pic;
 
   int outbuf_size = 100000;
   uint8_t *outbuf = malloc(outbuf_size);
@@ -375,7 +414,7 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
   for(; i > 0; i--) {
       memset(DST_FILE, 0, strlen(DST_FILE));
       strcpy(DST_FILE, TMP_FOLDER);
-      strcat(DST_FILE, "//");
+      strcat(DST_FILE, "/");
       char frame_count_str[8];
       sprintf(frame_count_str, "%d", frameCount);
       LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
@@ -393,31 +432,33 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
         frameCount++;
         continue;
       }
-      avpicture_fill(&picture_pic, buffer, PIX_FMT_RGB8, c->width, c->height);
+      avpicture_fill(&picture_pic, buffer, PIX_FMT_RGB8, 
+        st_dst->codec->width, st_dst->codec->height);
       //avpicture_fill((AVPicture*)outpic, outbuffer, PIX_FMT_YUV420P, c->width, c->height);
       fclose(pictureF);
       //fdelete(DST_FILE);
-      struct SwsContext* fooContext = sws_getContext(c->width, c->height, 
+      struct SwsContext* fooContext = sws_getContext(st_dst->codec->width, 
+                                                     st_dst->codec->height, 
                                                      PIX_FMT_RGB8, 
-                                                     c->width, c->height, 
+                                                     st_dst->codec->width, 
+                                                     st_dst->codec->height, 
                                                      PIX_FMT_YUV420P, 
                                                      SWS_FAST_BILINEAR, 
                                                      NULL, NULL, NULL);
 
       //perform the conversion
       sws_scale(fooContext, picture_pic.data, picture_pic.linesize, 
-                0, c->height, frame->data, frame->linesize);
+                0, st_dst->codec->height, 
+                picture_pic.data, picture_pic.linesize);
       // Here is where I try to convert to YUV
       
       av_init_packet(&pkt);
       pkt.data = NULL;    // packet data will be allocated by the encoder
       pkt.size = 0;
 
-      fflush(stdout);
-
-      frame->pts = frameCount++;
+      frame_dst->pts = frameCount++;
       /* encode the image */
-      ret = avcodec_encode_video2(c, &pkt, frame, &got_output);
+      ret = avcodec_encode_video2(st_dst->codec, &pkt, frame_dst, &got_output);
       if (ret < 0) {
           LOGI(LOG_LEVEL, "Error encoding frame\n");
           continue;
@@ -425,18 +466,30 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
 
       if (got_output) {
           LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", frameCount, pkt.size);
-          fwrite(pkt.data, 1, pkt.size, f);
-          av_free_packet(&pkt);
+          if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
+            LOGI(LOG_LEVEL, "[output]pts_src: %d\n",
+                 st_dst->codec->coded_frame->pts);
+            pkt.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
+                                      st_dst->codec->time_base,
+                                      st_dst->time_base);
+            LOGI(LOG_LEVEL, "[output]pts_dst: %d, dts: %d\n", pkt.pts, pkt.dts);
+          }
+          /* Write the compressed frame to the media file. */
+          ret = av_interleaved_write_frame(formatContext_dst, &pkt);
+          if (ret < 0) {
+            LOGI(LOG_LEVEL, "[output] write frame failed: %d \n", ret);
+          } else {
+            frameCount++;
+          }
       }
   }
-  /* add sequence end code to have a real mpeg file */
-  fwrite(endcode, 1, sizeof(endcode), f);
-  fclose(f);
+  av_write_trailer(formatContext_dst);
+  LOGI(LOG_LEVEL, "Decoding video frame DONE!\n");
 
-  avcodec_close(c);
-  av_free(c);
-  av_freep(&frame->data[0]);
-  avcodec_free_frame(&frame);
+  avcodec_close(codec_dst);
+  av_free(codec_dst);
+  av_freep(&frame_dst->data[0]);
+  avcodec_free_frame(&frame_dst);
   av_freep(&frame_pic->data[0]);
   avcodec_free_frame(&frame_pic);
   LOGI(LOG_LEVEL, "Encoding success.\n");
