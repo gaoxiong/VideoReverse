@@ -232,8 +232,7 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
         strcpy(DST_FILE, TMP_FOLDER);
         strcat(DST_FILE, "//");
         char frame_count_str[8];
-        snprintf(frame_count_str, 8, "%d", frameCount++);
-        //itoa(frameCount++, frame_count_str, 10);
+        sprintf(frame_count_str, "%d", frameCount);
         LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
         strcat(DST_FILE, frame_count_str);
         strcat(DST_FILE, ".jpg");
@@ -247,7 +246,7 @@ int decode2JPG(const char* SRC_FILE, const char* TMP_FOLDER, AVCodecContext *cod
           memset(buffer, 0, numBytes * sizeof(uint8_t));
         }
         frame_src->quality = 10;
-        frame_src->pts = 0;
+        frame_src->pts = frameCount++;
         int szBufferActual = avcodec_encode_video(pMJPEGCtx, buffer, numBytes, frame_src);
         LOGI(LOG_LEVEL, "szBufferActual: %d\n", szBufferActual);
         if (SaveFrame(szBufferActual, buffer, DST_FILE))
@@ -290,7 +289,7 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
   codec = avcodec_find_encoder(codec_id);
   if (!codec) {
       LOGI(LOG_LEVEL, "Codec not found\n");
-      exit(1);
+      return 0;
   }
 
   c = avcodec_alloc_context3(codec);
@@ -312,19 +311,19 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
   /* open it */
   if (avcodec_open2(c, codec, NULL) < 0) {
       LOGI(LOG_LEVEL, "Could not open codec\n");
-      exit(1);
+      return 0;
   }
 
   f = fopen(OUT_FMT_FILE, "wb");
   if (!f) {
       LOGI(LOG_LEVEL, "Could not open %s\n", OUT_FMT_FILE);
-      exit(1);
+      return 0;
   }
 
   frame = avcodec_alloc_frame();
   if (!frame) {
       LOGI(LOG_LEVEL, "Could not allocate video frame\n");
-      exit(1);
+      return 0;
   }
   frame->format = c->pix_fmt;
   frame->width  = c->width;
@@ -336,7 +335,7 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
                        c->pix_fmt, 32);
   if (ret < 0) {
       LOGI(LOG_LEVEL, "Could not allocate raw picture buffer\n");
-      exit(1);
+      return 0;
   }
   
   /* allocate and init a re-usable frame */
@@ -371,29 +370,32 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
   uint8_t *buffer = (uint8_t *)av_malloc(nbytes * sizeof(uint8_t));
 
   /* encode 1 second of video */
+  i = frameCount;
   frameCount = 0;
-  for(i = frameCount; i > 0; i--) {
+  for(; i > 0; i--) {
       memset(DST_FILE, 0, strlen(DST_FILE));
       strcpy(DST_FILE, TMP_FOLDER);
       strcat(DST_FILE, "//");
       char frame_count_str[8];
-      snprintf(frame_count_str, 8, "%d", frameCount);
-      //itoa(frameCount++, frame_count_str, 10);
+      sprintf(frame_count_str, "%d", frameCount);
       LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
       strcat(DST_FILE, frame_count_str);
       strcat(DST_FILE, ".jpg");
-      pictureF = fopen(DST_FILE, "wb");
+      LOGI(LOG_LEVEL, "open jpg file: %s\n", DST_FILE);
+      pictureF = fopen(DST_FILE, "rb");
       if (pictureF == NULL) {
         LOGI(LOG_LEVEL, "file is not exist.\n", DST_FILE);
+        frameCount++;
         continue;
       }
       if (fread(buffer, sizeof(char), nbytes, pictureF) <= 0) {
         LOGI(LOG_LEVEL, "file is empty.\n", DST_FILE);
+        frameCount++;
         continue;
       }
       avpicture_fill(&picture_pic, buffer, PIX_FMT_RGB8, c->width, c->height);
       //avpicture_fill((AVPicture*)outpic, outbuffer, PIX_FMT_YUV420P, c->width, c->height);
-      fclose(DST_FILE);
+      fclose(pictureF);
       //fdelete(DST_FILE);
       struct SwsContext* fooContext = sws_getContext(c->width, c->height, 
                                                      PIX_FMT_RGB8, 
@@ -413,7 +415,7 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
 
       fflush(stdout);
 
-      frame->pts = frameCount;
+      frame->pts = frameCount++;
       /* encode the image */
       ret = avcodec_encode_video2(c, &pkt, frame, &got_output);
       if (ret < 0) {
