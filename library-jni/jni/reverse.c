@@ -404,7 +404,7 @@ int encodeJPG2Video(const char* TMP_FOLDER, int frameCount,
 
   int outbuf_size = 100000;
   uint8_t *outbuf = malloc(outbuf_size);
-  int nbytes = avpicture_get_size(PIX_FMT_YUV420P, c->width, c->height);
+  int nbytes = avpicture_get_size(PIX_FMT_YUV420P, st_dst->codec->width, st_dst->codec->height);
   uint8_t* outbuffer = (uint8_t*)av_malloc(nbytes);
   uint8_t *buffer = (uint8_t *)av_malloc(nbytes * sizeof(uint8_t));
 
