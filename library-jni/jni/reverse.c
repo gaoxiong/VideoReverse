@@ -380,7 +380,7 @@ int decode2JPG2(const char* SRC_FILE, const char* TMP_FOLDER,
     pMJPEGCtx->pix_fmt = PIX_FMT_YUVJ420P;
     pMJPEGCtx->codec_id = AV_CODEC_ID_MJPEG;
 //    pMJPEGCtx->pix_fmt = PIX_FMT_YUV420P;
-//    pMJPEGCtx->codec_id = AV_CODEC_ID_H263;
+//    pMJPEGCtx->codec_id = AV_CODEC_ID_H263P;
     pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
     pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
     codecContext->time_base.num = pMJPEGCtx->time_base.num;
@@ -546,7 +546,7 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
     pMJPEGCtx->height = st_src->codec->height;
     codecContext->height = pMJPEGCtx->height;
     pMJPEGCtx->pix_fmt = PIX_FMT_YUV420P;
-    pMJPEGCtx->codec_id = AV_CODEC_ID_H263;
+    pMJPEGCtx->codec_id = AV_CODEC_ID_H263P;
     pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
     pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
     codecContext->time_base.num = pMJPEGCtx->time_base.num;
@@ -561,7 +561,7 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
       pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
       pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
     } else {
-      LOGI(LOG_LEVEL, "Can not find decoder!\n");
+      LOGI(LOG_LEVEL, "Can not find encoder: AV_CODEC_ID_H263P!\n");
       goto end;
     }
   } else {
@@ -1860,8 +1860,8 @@ int doReverse(const char* SRC_FILE, const char* OUT_FILE, const char* OUT_FMT_FI
   video_enc_ctx->gop_size = video_dec_ctx->gop_size;//250;
   video_enc_ctx->max_b_frames = video_dec_ctx->max_b_frames;//10;
   //H264 
-  //pCodecCtx->me_range = video_dec_ctx->pix_fmt;//16; 
-  //pCodecCtx->max_qdiff = video_dec_ctx->pix_fmt;//4; 
+  video_enc_ctx->me_range = video_dec_ctx->pix_fmt;//16;
+  video_enc_ctx->max_qdiff = video_dec_ctx->pix_fmt;//4;
   video_enc_ctx->qmin = video_dec_ctx->qmin;//10;
   video_enc_ctx->qmax = video_dec_ctx->qmax;//51;
   LOGI(LOG_LEVEL, "10. avcodec_open2: H264\n");
@@ -2042,6 +2042,7 @@ int reverse(char *file_path_src, char *file_path_desc,
   //doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
   //mux(MUX_TEST_FILE);
   //video_encode_example(VIDEO_ENCODING_TEST_FILE, AV_CODEC_ID_MPEG1VIDEO);
+  LOGI(LOG_LEVEL, "reversing...");
   doReverseViaBmp(file_path_src, TMP_FOLDER, file_path_desc);
   return 1;
   

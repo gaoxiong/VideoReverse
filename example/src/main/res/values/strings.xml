@@ -23,5 +23,6 @@
     <string name="main_activity_reverse_video_uri">/sdcard/localfile.mp4</string>
     <string name="main_activity_reverse_choose_button">Choose...</string>
     <string name="main_activity_reverse_button">Reverse</string>
+    <string name="main_activity_reversed_play_button">Play Reversed Video</string>
 
 </resources>

@@ -1,15 +1,10 @@
 package com.ffmpegtest;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import android.app.Activity;
-import android.content.Context;
-import android.content.CursorLoader;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -22,7 +17,6 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
-import android.view.Surface;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
@@ -30,7 +24,6 @@ import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 
-import com.appunite.ffmpeg.NotPlayingException;
 import com.ffmpegtest.adapter.ItemsAdapter;
 import com.ffmpegtest.adapter.VideoItem;
 
@@ -38,7 +31,8 @@ public class MainActivity extends Activity implements OnItemClickListener {
   MainActivity activity;
 	private ItemsAdapter adapter;
 	private EditText reverseEditText;
-	private int nativeInit = 0;
+	private int nativeInit = -1;
+	private String reversedVideoFilePath = "";
 
 	static {
 		System.loadLibrary("ffmpeg");
@@ -47,7 +41,9 @@ public class MainActivity extends Activity implements OnItemClickListener {
 
 	@Override
 	protected void finalize() throws Throwable {
-		deallocNative();
+		if (nativeInit == 0) {
+			deallocNative();
+		}
 		super.finalize();
 	}
 
@@ -70,6 +66,7 @@ public class MainActivity extends Activity implements OnItemClickListener {
 		final EditText editText = (EditText) findViewById(R.id.main_activity_video_url);
 		final View button = findViewById(R.id.main_activity_play_button);
 		final View reverseChooseBtn = findViewById(R.id.main_activity_reverse_choose_button);
+		final View reversedPlayBtn = findViewById(R.id.main_activity_reversed_play_button);
 		final View reverseBtn = findViewById(R.id.main_activity_reverse_button);
 		reverseEditText = (EditText) findViewById(R.id.main_activity_reverse_video_uri);
 
@@ -82,6 +79,7 @@ public class MainActivity extends Activity implements OnItemClickListener {
 
 		listView.setAdapter(adapter);
 		listView.setOnItemClickListener(this);
+		nativeInit = initNative();
 
 		button.setOnClickListener(new View.OnClickListener() {
 			@Override
@@ -95,11 +93,29 @@ public class MainActivity extends Activity implements OnItemClickListener {
 		reverseChooseBtn.setOnClickListener(new View.OnClickListener(){
 			@Override
 			public void onClick(View v) {
-				nativeInit = initNative();
 				Intent intent = new Intent(Intent.ACTION_GET_CONTENT);//ACTION_OPEN_DOCUMENT
 				intent.addCategory(Intent.CATEGORY_OPENABLE);
 				intent.setType("video/*");
 				startActivityForResult(intent, 0);
+			}
+		});
+
+		reversedPlayBtn.setOnClickListener(new View.OnClickListener(){
+			@Override
+			public void onClick(View v) {
+				if (reversedVideoFilePath != "" && isFolderExists(reversedVideoFilePath, false)) {
+					try {
+						Intent intent = new Intent(Intent.ACTION_VIEW);
+						intent.setDataAndType(Uri.parse(reversedVideoFilePath), "video/mp4");
+						startActivity(intent);
+					} catch (Exception e) {
+						Toast.makeText(getApplicationContext(),
+							"No player found!", Toast.LENGTH_SHORT).show();
+					}
+				} else {
+					Toast.makeText(getApplicationContext(),
+						"Cannot open this video!", Toast.LENGTH_SHORT).show();
+				}
 			}
 		});
 
@@ -111,12 +127,15 @@ public class MainActivity extends Activity implements OnItemClickListener {
 				String fileName = fileSrc.substring(fileSrc.lastIndexOf("/") + 1);
 				String fileTmp = "/sdcard/tmp";
 				String fileDst = filePath + "r_" + fileName;
-				if (!isFolderExists(fileTmp)) {
+				if (!isFolderExists(fileTmp, true)) {
 					Toast.makeText(getApplicationContext(),
 						"Cannot create temp file!", Toast.LENGTH_SHORT).show();
 					return;
 				}
 				if (nativeInit == 0) {
+					Toast.makeText(activity,
+						"Start reversing...", Toast.LENGTH_SHORT).show();
+					reversedVideoFilePath = fileDst;
 					new ReverseTask(activity).execute(fileSrc, fileDst,
 						Long.valueOf(0), Long.valueOf(0),
 						Integer.valueOf(1), Integer.valueOf(0), Integer.valueOf(0));
@@ -171,9 +190,12 @@ public class MainActivity extends Activity implements OnItemClickListener {
 		}
 	}
 
-	private boolean isFolderExists(String strFolder) {
+	private boolean isFolderExists(String strFolder, boolean bCreate) {
 		File file = new File(strFolder);
 		if (!file.exists()) {
+			if (!bCreate) {
+				return false;
+			}
 			if (file.mkdirs()) {
 				return true;
 			} else {
@@ -185,7 +207,7 @@ public class MainActivity extends Activity implements OnItemClickListener {
 
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-		if (requestCode == 0) {
+		if (requestCode == 0 && data != null) {
 			Log.d("reverse", "data.getData: " + data.getData());
 			Log.d("reverse", "data.getData.getEncodedPath: " + data.getData().getEncodedPath());
 			Log.d("reverse", "data.getData.getPath: " + data.getData().getPath());
