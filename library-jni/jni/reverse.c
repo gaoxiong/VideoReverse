@@ -748,7 +748,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
 
     /* Put sample parameters. */
     st_dst->codec->codec_type = AVMEDIA_TYPE_VIDEO;
-    st_dst->codec->bit_rate = codecContext->bit_rate;//st_src->codec->bit_rate;
+    st_dst->codec->bit_rate = 400000;//codecContext->bit_rate;
     /* Resolution must be a multiple of two. */
     st_dst->codec->width    = width;
     st_dst->codec->height   = height;
@@ -756,7 +756,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
      * of which frame timestamps are represented. For fixed-fps content,
      * timebase should be 1/framerate and timestamp increments should be
      * identical to 1. */
-    st_dst->codec->time_base.den = STREAM_FRAME_RATE;//st_src->codec->time_base.den;
+    st_dst->codec->time_base.den = 25;//STREAM_FRAME_RATE;//st_src->codec->time_base.den;
     st_dst->codec->time_base.num = 1;//st_src->codec->time_base.num;
     st_dst->codec->gop_size      = 12;//st_src->codec->gop_size;
     st_dst->codec->pix_fmt       = PIX_FMT_YUV420P;//st_src->codec->pix_fmt;
@@ -885,7 +885,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
         }
         outbuf[file_size] = '\0';
         fclose(pFile);
-        //remove(DST_FILE);
+        remove(DST_FILE);
       }
       avpicture_fill(&picture_pic, buffer, PIX_FMT_YUV420P,
                      width, height);
@@ -2034,16 +2034,16 @@ int reverse(char *file_path_src, char *file_path_desc,
             long positionUsStart, long positionUsEnd,
             int video_stream_no, int audio_stream_no,
             int subtitle_stream_no) {
-  const char *OUT_FILE = "/sdcard/outfile.h264";
-  const char *OUT_FMT_FILE = "/sdcard/outfmtfile.mp4";
-  const char *TMP_FOLDER = "/sdcard/test";
-  const char *MUX_TEST_FILE = "/sdcard/mux_test_file.mp4";
-  const char *VIDEO_ENCODING_TEST_FILE = "/sdcard/video_encoding.mp4";
+//  const char *OUT_FILE = "/sdcard/outfile.h264";
+//  const char *OUT_FMT_FILE = "/sdcard/outfmtfile.mp4";
+  const char *TMP_FOLDER = "/sdcard/tmp";
+//  const char *MUX_TEST_FILE = "/sdcard/mux_test_file.mp4";
+//  const char *VIDEO_ENCODING_TEST_FILE = "/sdcard/video_encoding.mp4";
   //doReverse2(file_path_src, OUT_FILE, OUT_FMT_FILE);
   //mux(MUX_TEST_FILE);
   //video_encode_example(VIDEO_ENCODING_TEST_FILE, AV_CODEC_ID_MPEG1VIDEO);
-  doReverseViaBmp(file_path_src, TMP_FOLDER, OUT_FMT_FILE);
-  return;
+  doReverseViaBmp(file_path_src, TMP_FOLDER, file_path_desc);
+  return 1;
   
   char *src_filename = NULL;
   char *video_dst_filename = NULL;

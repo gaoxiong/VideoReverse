@@ -92,12 +92,12 @@ static const struct {
 
 
 // FFmpegPlayer
-static char *player_class_path_name = "com/appunite/ffmpeg/FFmpegPlayer";
-static JavaField player_m_native_player = {"mNativePlayer", "I"};
-static JavaMethod player_on_update_time = {"onUpdateTime","(JJZ)V"};
-static JavaMethod player_prepare_audio_track = {"prepareAudioTrack", "(II)Landroid/media/AudioTrack;"};
-static JavaMethod player_prepare_frame = {"prepareFrame", "(II)Landroid/graphics/Bitmap;"};
-static JavaMethod player_set_stream_info = {"setStreamsInfo", "([Lcom/appunite/ffmpeg/FFmpegStreamInfo;)V"};
+static char *player_class_path_name = "com/ffmpegtest/MainActivity";
+//static JavaField player_m_native_player = {"mNativePlayer", "I"};
+//static JavaMethod player_on_update_time = {"onUpdateTime","(JJZ)V"};
+//static JavaMethod player_prepare_audio_track = {"prepareAudioTrack", "(II)Landroid/media/AudioTrack;"};
+//static JavaMethod player_prepare_frame = {"prepareFrame", "(II)Landroid/graphics/Bitmap;"};
+//static JavaMethod player_set_stream_info = {"setStreamsInfo", "([Lcom/appunite/ffmpeg/FFmpegStreamInfo;)V"};
 
 // AudioTrack
 static char *android_track_class_path_name = "android/media/AudioTrack";
@@ -141,20 +141,20 @@ static JNINativeMethod player_methods[] = {
 	{"initNative", "()I", (void*) jni_player_init},
 	{"deallocNative", "()V", (void*) jni_player_dealloc},
 
-	{"seekNative", "(J)V", (void*) jni_player_seek},
-
-	{"pauseNative", "()V", (void*) jni_player_pause},
-	{"resumeNative", "()V", (void*) jni_player_resume},
-
-	{"setDataSourceNative", "(Ljava/lang/String;Ljava/util/Map;III)I", (void*) jni_player_set_data_source},
+//	{"seekNative", "(J)V", (void*) jni_player_seek},
+//
+//	{"pauseNative", "()V", (void*) jni_player_pause},
+//	{"resumeNative", "()V", (void*) jni_player_resume},
+//
+//	{"setDataSourceNative", "(Ljava/lang/String;Ljava/util/Map;III)I", (void*) jni_player_set_data_source},
 	{"reverseNative", "(Ljava/lang/String;Ljava/lang/String;JJIII)I", (void*) jni_player_reverse},
-	{"stopNative", "()V", (void*) jni_player_stop},
-
-	{"renderFrameStart", "()V", (void*) jni_player_render_frame_start},
-	{"renderFrameStop", "()V", (void*) jni_player_render_frame_stop},
-
-	{"getVideoDurationNative", "()J", (void*) jni_player_get_video_duration},
-	{"render", "(Landroid/view/Surface;)V", (void*) jni_player_render},
+//	{"stopNative", "()V", (void*) jni_player_stop},
+//
+//	{"renderFrameStart", "()V", (void*) jni_player_render_frame_start},
+//	{"renderFrameStop", "()V", (void*) jni_player_render_frame_stop},
+//
+//	{"getVideoDurationNative", "()J", (void*) jni_player_get_video_duration},
+//	{"render", "(Landroid/view/Surface;)V", (void*) jni_player_render},
 };
 
 #endif

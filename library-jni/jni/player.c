@@ -1498,12 +1498,12 @@ int player_write_audio(struct DecoderData *decoder_data, JNIEnv *env,
 }
 
 struct Player * player_get_player_field(JNIEnv *env, jobject thiz) {
-
-	jfieldID m_native_layer_field = java_get_field(env, player_class_path_name,
-			player_m_native_player);
-	struct Player * player = (struct Player *) (*env)->GetIntField(env, thiz,
-			m_native_layer_field);
-	return player;
+    return 0;
+//	jfieldID m_native_layer_field = java_get_field(env, player_class_path_name,
+//			player_m_native_player);
+//	struct Player * player = (struct Player *) (*env)->GetIntField(env, thiz,
+//			m_native_layer_field);
+//	return player;
 }
 
 void *player_fill_packet(struct State *state) {
@@ -2745,43 +2745,43 @@ int jni_player_init(JNIEnv *env, jobject thiz) {
 			goto free_player;
 		}
 
-		jfieldID player_m_native_player_field = java_get_field(env,
-				player_class_path_name, player_m_native_player);
-		if (player_m_native_player_field == NULL) {
-			err = ERROR_NOT_FOUND_M_NATIVE_PLAYER_FIELD;
-			goto free_player;
-		}
-
-		(*env)->SetIntField(env, thiz, player_m_native_player_field,
-				(jint) player);
-
-		player->player_prepare_frame_method = java_get_method(env, player_class,
-				player_prepare_frame);
-		if (player->player_prepare_frame_method == NULL) {
-			err = ERROR_NOT_FOUND_PREPARE_FRAME_METHOD;
-			goto free_player;
-		}
-
-		player->player_on_update_time_method = java_get_method(env,
-				player_class, player_on_update_time);
-		if (player->player_on_update_time_method == NULL) {
-			err = ERROR_NOT_FOUND_ON_UPDATE_TIME_METHOD;
-			goto free_player;
-		}
-
-		player->player_prepare_audio_track_method = java_get_method(env,
-				player_class, player_prepare_audio_track);
-		if (player->player_prepare_audio_track_method == NULL) {
-			err = ERROR_NOT_FOUND_PREPARE_AUDIO_TRACK_METHOD;
-			goto free_player;
-		}
-
-		player->player_set_stream_info_method = java_get_method(env,
-				player_class, player_set_stream_info);
-		if (player->player_set_stream_info_method == NULL) {
-			err = ERROR_NOT_FOUND_SET_STREAM_INFO_METHOD;
-			goto free_player;
-		}
+//		jfieldID player_m_native_player_field = java_get_field(env,
+//				player_class_path_name, player_m_native_player);
+//		if (player_m_native_player_field == NULL) {
+//			err = ERROR_NOT_FOUND_M_NATIVE_PLAYER_FIELD;
+//			goto free_player;
+//		}
+//
+//		(*env)->SetIntField(env, thiz, player_m_native_player_field,
+//				(jint) player);
+//
+//		player->player_prepare_frame_method = java_get_method(env, player_class,
+//				player_prepare_frame);
+//		if (player->player_prepare_frame_method == NULL) {
+//			err = ERROR_NOT_FOUND_PREPARE_FRAME_METHOD;
+//			goto free_player;
+//		}
+//
+//		player->player_on_update_time_method = java_get_method(env,
+//				player_class, player_on_update_time);
+//		if (player->player_on_update_time_method == NULL) {
+//			err = ERROR_NOT_FOUND_ON_UPDATE_TIME_METHOD;
+//			goto free_player;
+//		}
+//
+//		player->player_prepare_audio_track_method = java_get_method(env,
+//				player_class, player_prepare_audio_track);
+//		if (player->player_prepare_audio_track_method == NULL) {
+//			err = ERROR_NOT_FOUND_PREPARE_AUDIO_TRACK_METHOD;
+//			goto free_player;
+//		}
+//
+//		player->player_set_stream_info_method = java_get_method(env,
+//				player_class, player_set_stream_info);
+//		if (player->player_set_stream_info_method == NULL) {
+//			err = ERROR_NOT_FOUND_SET_STREAM_INFO_METHOD;
+//			goto free_player;
+//		}
 
 		(*env)->DeleteLocalRef(env, player_class);
 	}

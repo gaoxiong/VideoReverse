@@ -20,5 +20,8 @@
     <string name="title_activity_main">AndroidFFmpeg</string>
     <string name="main_activity_video_url">Video url</string>
     <string name="main_activity_play_button">Play</string>
+    <string name="main_activity_reverse_video_uri">/sdcard/localfile.mp4</string>
+    <string name="main_activity_reverse_choose_button">Choose...</string>
+    <string name="main_activity_reverse_button">Reverse</string>
 
 </resources>
