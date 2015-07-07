@@ -72,12 +72,12 @@ int SaveYuv(const char *buf, int wrap, int xsize,
   return 1;
 }
 
-int CopyYuv(const char *buf_src, int wrap, int xsize,
+int CopyYuv(const uint8_t *buf_src, int wrap, int xsize,
             int ysize, uint8_t *buf_dst) {
   int i, pos = 0;
   for(i = 0; i < ysize; i++) {
 //    LOGI(LOG_LEVEL, "pos: %d(i=%d), length:%d\n", i * wrap, i, xsize);
-    memcpy((void*)(&buf_dst[i * xsize]), (void*)(&buf_src[i * wrap]), xsize);
+    memcpy((uint8_t*)(&buf_dst[i * xsize]), (uint8_t*)(&buf_src[i * wrap]), xsize);
     pos = i * xsize;
   }
   return pos;
@@ -241,6 +241,7 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
 #if 1
         int widthMultiHeight = st_src->codec->width * st_src->codec->height;
         yuvBufferListItem = (YUVBufferList*)av_malloc(sizeof(YUVBufferList));
+        memset(yuvBufferListItem, 0, sizeof(YUVBufferList));
         yuvBufferListItem->data[0] = (uint8_t*)malloc(widthMultiHeight);
         yuvBufferListItem->data[1] = (uint8_t*)malloc(widthMultiHeight >> 2);
         yuvBufferListItem->data[2] = (uint8_t*)malloc(widthMultiHeight >> 2);
@@ -268,8 +269,8 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
              frame_src->linesize[0],
              frame_src->linesize[1],
              frame_src->linesize[2]);
-        yuvBufferListItem->next = (void *)yuvBufferListHeader;
-        yuvBufferListHeader = yuvBufferListItem;
+        yuvBufferListItem->next = (void*)yuvBufferListHeader;
+        yuvBufferListHeader = (YUVBufferList*)yuvBufferListItem;
 #else
         memset(DST_FILE, 0, strlen(DST_FILE));
         strcpy(DST_FILE, TMP_FOLDER);
@@ -297,7 +298,6 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
           fclose(f);
         }
 #endif
-return 1;
         frameCount++;
       }
     }
@@ -427,7 +427,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
     }
   }
   /* copy data and linesize picture pointers to frame */
-  //*((AVPicture *)frame_pic) = picture_pic;
+  *((AVPicture *)frame_pic) = picture_pic;
 
   /* open the output file, if needed */
   if (!(formatContext_dst->oformat->flags & AVFMT_NOFILE)) {
@@ -531,27 +531,26 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
       LOGI(LOG_LEVEL, "inbuf[2] length:%d\n", strlen(inbuf[2]));
 #endif
       int inlinesize[4] = {width, width / 2, width / 2, 0};
-      avpicture_fill(&picture_pic, buffer, PIX_FMT_YUV420P,
+      avpicture_fill(frame_pic, buffer, PIX_FMT_YUV420P,
                      width, height);
       sws_scale(fooContext, inbuf, inlinesize,
                 0, height,
-                picture_pic.data, picture_pic.linesize);
+                frame_pic->data, frame_pic->linesize);
       /* end of using create frame */
       
       av_init_packet(&pkt);
       pkt.data = NULL;    // packet data will be allocated by the encoder
       pkt.size = 0;
 
-      //frame_pic->pts = frameCount;
-      ((AVFrame*)&picture_pic)->pts = frameCount;
+      frame_pic->pts = frameCount;
+      //((AVFrame*)&picture_pic)->pts = frameCount;
       /* encode the image */
       LOGI(LOG_LEVEL, "start encode[%d]...\n", frameCount);
-      ret = avcodec_encode_video2_test(st_dst->codec, &pkt, &picture_pic, &got_output);
+      ret = avcodec_encode_video2(st_dst->codec, &pkt, frame_pic, &got_output);
       if (ret < 0) {
           LOGI(LOG_LEVEL, "Error encoding frame\n");
           break;
       }
-      return;
 
       if (got_output) {
           LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", frameCount, pkt.size);
@@ -573,7 +572,6 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
             frameCount++;
           }
       }
-      break;
   }
   av_write_trailer(formatContext_dst);;
   sws_freeContext(fooContext);
