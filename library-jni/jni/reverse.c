@@ -40,6 +40,8 @@ const char *str_appendix = ".jpg";
 #define STREAM_FRAME_RATE 25 /* 25 images/s */
 #define STREAM_PIX_FMT PIX_FMT_YUV420P /* default pix_fmt */
 
+#define USE_MEMORY_BUFFER 1;
+
 typedef struct YUVBufferList{
   uint8_t*       data[4];
   int            linesize[4];
@@ -66,7 +68,6 @@ int SaveYuv(const char *buf, int wrap, int xsize,
             int ysize, const FILE *f) {  
   int i;
   for(i = 0; i < ysize; i++) {
-    LOGI(LOG_LEVEL, "pos: %d(i=%d), length:%d\n", i*wrap, i, xsize);
     fwrite(buf + i * wrap, 1, xsize, f);
   }
   return 1;
@@ -76,7 +77,6 @@ int CopyYuv(const uint8_t *buf_src, int wrap, int xsize,
             int ysize, uint8_t *buf_dst) {
   int i, pos = 0;
   for(i = 0; i < ysize; i++) {
-//    LOGI(LOG_LEVEL, "pos: %d(i=%d), length:%d\n", i * wrap, i, xsize);
     memcpy((uint8_t*)(&buf_dst[i * xsize]), (uint8_t*)(&buf_src[i * wrap]), xsize);
     pos = i * xsize;
   }
@@ -89,7 +89,6 @@ int SaveFrame(int nszBuffer, uint8_t *buffer, const char* cOutFileName) {
   if( nszBuffer > 0 ) {
     FILE *pFile = fopen(cOutFileName, "wb");
     if(pFile) {
-      LOGI(LOG_LEVEL, "write to file\n");
       fwrite(buffer, sizeof(uint8_t), nszBuffer, pFile);
       bRet = 1;
       fclose(pFile);
@@ -103,12 +102,10 @@ int ReadFrame(int *nszBuffer, uint8_t **buffer, const char* cOutFileName) {
   FILE *pFile = fopen(cOutFileName, "rb");
   if (pFile)
   {
-    LOGI(LOG_LEVEL, "reading from file\n");
     int read_size = 0;
     *nszBuffer = 0;
     while ((read_size = fread(&(*buffer)[*nszBuffer], sizeof(uint8_t), 1024 * 1024, pFile)) > 0) {
       *nszBuffer += read_size;
-      LOGI(LOG_LEVEL, "read size: %d", read_size);
     }
     bRet = 1;
     (*buffer)[*nszBuffer] = '\0';
@@ -120,7 +117,6 @@ int ReadFrame(int *nszBuffer, uint8_t **buffer, const char* cOutFileName) {
 
 int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
                AVCodecContext *codecContext,
-               AVCodecContext **ppMJPEGCtx,
                int *stream_index) {
   AVFormatContext *formatContext_src = NULL;
   AVStream *st_src = NULL;
@@ -169,7 +165,6 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
     LOGI(LOG_LEVEL, "decodec context is NULL\n");
     goto end;
   }
-  LOGI(LOG_LEVEL, "codec_is is %d\n", st_src->codec->codec_id);
 
   codec_src = avcodec_find_decoder(st_src->codec->codec_id);
   if ((ret = avcodec_open2(st_src->codec, codec_src, NULL)) < 0) {
@@ -177,50 +172,16 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
          av_get_media_type_string(st_src->codec->codec_id));
     goto end;
   }
-  LOGI(LOG_LEVEL, "codec name is %s\n", codec_src->name);
+
+  codecContext->width = st_src->codec->width;
+  codecContext->height = st_src->codec->height;
 
   /* initialize packet, set data to NULL, let the demuxer fill it */
   AVPacket pt_src;
   frame_src = avcodec_alloc_frame();
 
-  /* for encoder */
-  AVCodec *pMJPEGCodec = NULL;
-  AVCodecContext *pMJPEGCtx = avcodec_alloc_context();
-  (*ppMJPEGCtx) = pMJPEGCtx;
-  if (pMJPEGCtx)
-  {
-    pMJPEGCtx->bit_rate = st_src->codec->bit_rate;
-    codecContext->bit_rate = pMJPEGCtx->bit_rate;
-    pMJPEGCtx->width = st_src->codec->width;
-    codecContext->width = pMJPEGCtx->width;
-    pMJPEGCtx->height = st_src->codec->height;
-    codecContext->height = pMJPEGCtx->height;
-    pMJPEGCtx->pix_fmt = PIX_FMT_YUV420P;
-    pMJPEGCtx->codec_id = AV_CODEC_ID_H263P;
-    pMJPEGCtx->codec_type = AVMEDIA_TYPE_VIDEO;
-    pMJPEGCtx->time_base.num = st_src->codec->time_base.num;
-    codecContext->time_base.num = pMJPEGCtx->time_base.num;
-    pMJPEGCtx->time_base.den = st_src->codec->time_base.den;
-    codecContext->time_base.den = pMJPEGCtx->time_base.den;
-
-    pMJPEGCodec = avcodec_find_encoder(pMJPEGCtx->codec_id);
-    if (pMJPEGCodec && (avcodec_open(pMJPEGCtx, pMJPEGCodec) >= 0)) {
-      pMJPEGCtx->qmin = pMJPEGCtx->qmax = 3;
-      pMJPEGCtx->mb_lmin = pMJPEGCtx->lmin = pMJPEGCtx->qmin * FF_QP2LAMBDA;
-      pMJPEGCtx->mb_lmax = pMJPEGCtx->lmax = pMJPEGCtx->qmax * FF_QP2LAMBDA;
-      pMJPEGCtx->flags |= CODEC_FLAG_QSCALE;
-    } else {
-      LOGI(LOG_LEVEL, "Can not find encoder: AV_CODEC_ID_H263P!\n");
-      goto end;
-    }
-  } else {
-    LOGI(LOG_LEVEL, "pMJPEGCtx is 0!");
-    goto end;
-  }
-
   int got_frame = -1, got_output = -1, numBytes = 0;
   uint8_t *buffer = NULL;
-  LOGI(LOG_LEVEL, "Start decoding video frame\n");
   while (1) {
     av_init_packet(&pt_src);
     pt_src.data = NULL;
@@ -235,40 +196,47 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
         goto end;
       }
       if (got_frame) {
-        LOGI(LOG_LEVEL, "video_frame n:%d coded_n:%d pts:%s\n",
-             frameCount, frame_src->coded_picture_number,
-             av_ts2timestr(frame_src->pts, &st_src->codec->time_base));
-#if 1
+        LOGI(LOG_LEVEL, "Decoding...[%d]\n", frameCount);
+#ifdef USE_MEMORY_BUFFER
         int widthMultiHeight = st_src->codec->width * st_src->codec->height;
         yuvBufferListItem = (YUVBufferList*)av_malloc(sizeof(YUVBufferList));
+        if (yuvBufferListItem == NULL) {
+          LOGI(LOG_LEVEL, "Memory error!\n");
+          frameCount = 0;
+          break;
+        }
         memset(yuvBufferListItem, 0, sizeof(YUVBufferList));
-        yuvBufferListItem->data[0] = (uint8_t*)malloc(widthMultiHeight);
-        yuvBufferListItem->data[1] = (uint8_t*)malloc(widthMultiHeight >> 2);
-        yuvBufferListItem->data[2] = (uint8_t*)malloc(widthMultiHeight >> 2);
+        yuvBufferListItem->data[0] = (uint8_t*)malloc(widthMultiHeight * sizeof(uint8_t));
+        if (yuvBufferListItem->data[0] == NULL) {
+          LOGI(LOG_LEVEL, "Memory error!\n");
+          frameCount = 0;
+          break;
+        }
+        yuvBufferListItem->data[1] = (uint8_t*)malloc(widthMultiHeight * sizeof(uint8_t) >> 2);
+        if (yuvBufferListItem->data[1] == NULL) {
+          LOGI(LOG_LEVEL, "Memory error!\n");
+          frameCount = 0;
+          break;
+        }
+        yuvBufferListItem->data[2] = (uint8_t*)malloc(widthMultiHeight * sizeof(uint8_t) >> 2);
+        if (yuvBufferListItem->data[2] == NULL) {
+          LOGI(LOG_LEVEL, "Memory error!\n");
+          frameCount = 0;
+          break;
+        }
         yuvBufferListItem->data[3] = 0;
-        memset(yuvBufferListItem->data[0], 0, widthMultiHeight);
-        memset(yuvBufferListItem->data[1], 0, widthMultiHeight >> 2);
-        memset(yuvBufferListItem->data[2], 0, widthMultiHeight >> 2);
-        LOGI(LOG_LEVEL, "frame_src->data[0] length: %d\n", strlen(frame_src->data[0]));
+        memset(yuvBufferListItem->data[0], 0, widthMultiHeight * sizeof(uint8_t));
+        memset(yuvBufferListItem->data[1], 0, widthMultiHeight * sizeof(uint8_t) >> 2);
+        memset(yuvBufferListItem->data[2], 0, widthMultiHeight * sizeof(uint8_t) >> 2);
         CopyYuv(frame_src->data[0], frame_src->linesize[0], st_src->codec->width, st_src->codec->height, yuvBufferListItem->data[0]);
-        LOGI(LOG_LEVEL, "yuvBufferListItem->data[0] length: %d\n", strlen(yuvBufferListItem->data[0]));
-        LOGI(LOG_LEVEL, "frame_src->data[1] length: %d\n", strlen(frame_src->data[1]));
         CopyYuv(frame_src->data[1], frame_src->linesize[1], st_src->codec->width / 2, st_src->codec->height / 2, yuvBufferListItem->data[1]);
-        LOGI(LOG_LEVEL, "yuvBufferListItem->data[1] length: %d\n", strlen(yuvBufferListItem->data[1]));
-        LOGI(LOG_LEVEL, "frame_src->data[2] length: %d\n", strlen(frame_src->data[2]));
         CopyYuv(frame_src->data[2], frame_src->linesize[2], st_src->codec->width / 2, st_src->codec->height / 2, yuvBufferListItem->data[2]);
-        LOGI(LOG_LEVEL, "yuvBufferListItem->data[2] length: %d\n", strlen(yuvBufferListItem->data[2]));
         yuvBufferListItem->linesize[0] = frame_src->linesize[0];
         yuvBufferListItem->linesize[1] = frame_src->linesize[1];
         yuvBufferListItem->linesize[2] = frame_src->linesize[2];
         yuvBufferListItem->linesize[3] = 0;
         yuvBufferListItem->width = st_src->codec->width;
         yuvBufferListItem->height = st_src->codec->height;
-        LOGI(LOG_LEVEL, "width: %d, linesize[%d, %d, %d]\n",
-             st_src->codec->width, 
-             frame_src->linesize[0],
-             frame_src->linesize[1],
-             frame_src->linesize[2]);
         yuvBufferListItem->next = (void*)yuvBufferListHeader;
         yuvBufferListHeader = (YUVBufferList*)yuvBufferListItem;
 #else
@@ -277,21 +245,16 @@ int decode2YUV(const char* SRC_FILE, const char* TMP_FOLDER,
         strcat(DST_FILE, "//");
         char frame_count_str[8];
         sprintf(frame_count_str, "%d", frameCount);
-        LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
         strcat(DST_FILE, frame_count_str);
         strcat(DST_FILE, ".yuv");
-        LOGI(LOG_LEVEL, "output file name: %s\n", DST_FILE);
         FILE *f = fopen(DST_FILE, "ab+");
         if (f != NULL) {
-          LOGI(LOG_LEVEL, "frame_src->data[0] length:%d\n", strlen(frame_src->data[0]));
           SaveYuv(frame_src->data[0], frame_src->linesize[0],
                   st_src->codec->width, st_src->codec->height, 
                   f);
-          LOGI(LOG_LEVEL, "frame_src->data[1] length:%d\n", strlen(frame_src->data[1]));
           SaveYuv(frame_src->data[1], frame_src->linesize[1],
                   st_src->codec->width / 2, st_src->codec->height / 2, 
                   f);
-          LOGI(LOG_LEVEL, "frame_src->data[2] length:%d\n", strlen(frame_src->data[2]));
           SaveYuv(frame_src->data[2], frame_src->linesize[2],
                   st_src->codec->width / 2, st_src->codec->height / 2, 
                   f);
@@ -314,10 +277,8 @@ end:
 }
 
 int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
-                    const char* OUT_FMT_FILE, AVCodecContext *codecContext,
-                    AVCodecContext *pMJPEGCtx) {
-
-  LOGI(LOG_LEVEL, "encodeJPG2Video: %d(w:%d,h:%d)\n", frameCount,
+                    const char* OUT_FMT_FILE, AVCodecContext *codecContext) {
+  LOGI(LOG_LEVEL, "encodeYUV2Video: %d(w:%d,h:%d)\n", frameCount,
        codecContext->width, codecContext->height);
 
   AVFormatContext *formatContext_dst = NULL;
@@ -451,8 +412,10 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
   /************ end of init decoder ******************/
 
   /* allocate and init a re-usable frame */
+#ifndef USE_MEMORY_BUFFER
   int outbuf_size = 1000000;
   uint8_t *outbuf = malloc(outbuf_size);
+#endif
   int nbytes = avpicture_get_size(PIX_FMT_YUV420P, width, height);
   uint8_t *buffer = (uint8_t *)av_malloc(nbytes * sizeof(uint8_t));
   int file_size;
@@ -467,7 +430,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
   i = frameCount;
   frameCount = 0;
   for(; i >= 0; i--) {
-#if 1
+#ifdef USE_MEMORY_BUFFER
       if (yuvBufferListHeader == NULL) {
         LOGI(LOG_LEVEL, "yuvBufferListHeader is NULL!\n");
         break;
@@ -475,34 +438,24 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
       yuvBufferListItem = yuvBufferListHeader;
       yuvBufferListHeader = (YUVBufferList *)yuvBufferListHeader->next;
 
-//      memset(inbuf[0], 0, widthMultiHeight);
-//      memset(inbuf[1], 0, widthMultiHeight >> 2);
-//      memset(inbuf[2], 0, widthMultiHeight >> 2);
+      memset(inbuf[0], 0, widthMultiHeight);
+      memset(inbuf[1], 0, widthMultiHeight >> 2);
+      memset(inbuf[2], 0, widthMultiHeight >> 2);
       memcpy(inbuf[0], yuvBufferListItem->data[0], widthMultiHeight);
-      LOGI(LOG_LEVEL, "inbuf[0].length:%d\n", strlen(inbuf[0]));
-      //av_free(yuvBufferListItem->data[0]);
+      av_free(yuvBufferListItem->data[0]);
       memcpy(inbuf[1], yuvBufferListItem->data[1], widthMultiHeight >> 2);
-      LOGI(LOG_LEVEL, "inbuf[1].length:%d\n", strlen(inbuf[1]));
-      //av_free(yuvBufferListItem->data[1]);
+      av_free(yuvBufferListItem->data[1]);
       memcpy(inbuf[2], yuvBufferListItem->data[2], widthMultiHeight >> 2);
-      LOGI(LOG_LEVEL, "inbuf[2].length:%d\n", strlen(inbuf[2]));
-      //av_free(yuvBufferListItem->data[2]);
-
-      LOGI(LOG_LEVEL, "width is %d, 0:%d, 1:%d, 2:%d\n", width,
-           yuvBufferListItem->linesize[0],
-           yuvBufferListItem->linesize[1],
-           yuvBufferListItem->linesize[2]);
-      //av_free(yuvBufferListItem);
+      av_free(yuvBufferListItem->data[2]);
+      av_free(yuvBufferListItem);
 #else
       memset(DST_FILE, 0, strlen(DST_FILE));
       strcpy(DST_FILE, TMP_FOLDER);
       strcat(DST_FILE, "/");
       char frame_count_str[8];
       sprintf(frame_count_str, "%d", i);
-      LOGI(LOG_LEVEL, "frame_count_str: %s\n", frame_count_str);
       strcat(DST_FILE, frame_count_str);
       strcat(DST_FILE, ".yuv");
-      LOGI(LOG_LEVEL, "open jpg file: %s\n", DST_FILE);
 //      if (!ReadFrame(&file_size, &outbuf, DST_FILE)) {
 //        LOGI(LOG_LEVEL, "read file error: %s\n", DST_FILE);
 //        break;
@@ -517,18 +470,13 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
           file_size += read_size;
           LOGI(LOG_LEVEL, "read size: %d", read_size);
         }
-        //outbuf[file_size] = '\0';
+        outbuf[file_size] = '\0';
         fclose(pFile);
-        //remove(DST_FILE);
+        remove(DST_FILE);
       }
-      LOGI(LOG_LEVEL, "file size: %d, truely file size: %d\n",
-           file_size, getFileSize(DST_FILE));
       memcpy(inbuf[0], outbuf, widthMultiHeight);
-      LOGI(LOG_LEVEL, "inbuf[0] length:%d\n", strlen(inbuf[0]));
       memcpy(inbuf[1], outbuf + widthMultiHeight, widthMultiHeight >> 2);
-      LOGI(LOG_LEVEL, "inbuf[1] length:%d\n", strlen(inbuf[1]));
       memcpy(inbuf[2], outbuf + (widthMultiHeight * 5 >> 2), widthMultiHeight >> 2);
-      LOGI(LOG_LEVEL, "inbuf[2] length:%d\n", strlen(inbuf[2]));
 #endif
       int inlinesize[4] = {width, width / 2, width / 2, 0};
       avpicture_fill(frame_pic, buffer, PIX_FMT_YUV420P,
@@ -536,8 +484,7 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
       sws_scale(fooContext, inbuf, inlinesize,
                 0, height,
                 frame_pic->data, frame_pic->linesize);
-      /* end of using create frame */
-      
+
       av_init_packet(&pkt);
       pkt.data = NULL;    // packet data will be allocated by the encoder
       pkt.size = 0;
@@ -545,7 +492,6 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
       frame_pic->pts = frameCount;
       //((AVFrame*)&picture_pic)->pts = frameCount;
       /* encode the image */
-      LOGI(LOG_LEVEL, "start encode[%d]...\n", frameCount);
       ret = avcodec_encode_video2(st_dst->codec, &pkt, frame_pic, &got_output);
       if (ret < 0) {
           LOGI(LOG_LEVEL, "Error encoding frame\n");
@@ -553,17 +499,13 @@ int encodeYUV2Video(const char* TMP_FOLDER, int frameCount, int stream_index,
       }
 
       if (got_output) {
-          LOGI(LOG_LEVEL, "Write frame %3d (size=%5d)\n", frameCount, pkt.size);
+          LOGI(LOG_LEVEL, "Encoding to video...[%d]", frameCount);
           if (st_dst->codec->coded_frame->pts != AV_NOPTS_VALUE) {
-            LOGI(LOG_LEVEL, "[output]pts_src: %d\n",
-                 st_dst->codec->coded_frame->pts);
             pkt.pts = av_rescale_q(st_dst->codec->coded_frame->pts,
                                       st_dst->codec->time_base,
                                       st_dst->time_base);
-            LOGI(LOG_LEVEL, "[output]pts_dst: %d, dts: %d\n", pkt.pts, pkt.dts);
           }
           /* Write the compressed frame to the media file. */
-          LOGI(LOG_LEVEL, "start write to file...\n");
           pkt.stream_index = stream_index;
           ret = av_interleaved_write_frame(formatContext_dst, &pkt);
           if (ret < 0) {
@@ -596,9 +538,8 @@ int doReverseViaBmp(const char* SRC_FILE, const char* TMP_FOLDER, const char* OU
     return 0;
   }
   int stream_index = 0;
-  AVCodecContext *pMJPEGCtx = NULL;
-  int frameCount = decode2YUV(SRC_FILE, TMP_FOLDER, codecContext, &pMJPEGCtx, &stream_index) - 1;
-  return encodeYUV2Video(TMP_FOLDER, frameCount, stream_index, OUT_FMT_FILE, codecContext, pMJPEGCtx);
+  int frameCount = decode2YUV(SRC_FILE, TMP_FOLDER, codecContext, &stream_index) - 1;
+  return encodeYUV2Video(TMP_FOLDER, frameCount, stream_index, OUT_FMT_FILE, codecContext);
 }
 
 int reverse(char *file_path_src, char *file_path_desc,
