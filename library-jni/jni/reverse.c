@@ -149,6 +149,7 @@ int decode2YUV(const char* SRC_FILE, const char* OUT_FMT_FILE,
     goto end;
   }
   *stream_index = ret;
+  LOGI(LOG_LEVEL, "stream_index:%d\n", ret);
   if (formatContext_src == NULL) {
     LOGI(LOG_LEVEL, "format context is NULL\n");
     goto end;
@@ -203,6 +204,8 @@ int decode2YUV(const char* SRC_FILE, const char* OUT_FMT_FILE,
         if (frameCount == 1) {
           start_timestamp = st_src->start_time;
           timestamp_interval = av_q2d(st_src->codec->time_base) * frame_src->pts;
+          LOGI(LOG_LEVEL, "start_time:%f, timestamp_interval:%f\n",
+               start_timestamp, timestamp_interval);
         }
         frameCount++;
       }
@@ -350,24 +353,29 @@ int decode2YUV(const char* SRC_FILE, const char* OUT_FMT_FILE,
     av_init_packet(&pt_src);
     pt_src.data = NULL;
     pt_src.size = 0;
-#if 1
-    uint64_t seeked_ts = (frameCount * timestamp_interval - start_timestamp) *
-                         st_src->time_base.den / st_src->time_base.num;
-#else
-    uint64_t seeked_ts = av_rescale_q(frameCount * timestamp_interval - start_timestamp,
-                                   st_src->time_base, AV_TIME_BASE_Q);
-#endif
-    LOGI(LOG_LEVEL, "Seek.... ts[%.6g], origin[%.6g], interval[%.6g]\n",
-         seeked_ts, frameCount * timestamp_interval, timestamp_interval);
-    if (avformat_seek_file(formatContext_src, *stream_index,
-                           INT64_MIN, seeked_ts, INT64_MAX, 0) < 0) {
+    int64_t seek_target = (frameCount * timestamp_interval - start_timestamp) * 1000 * 1000;
+    LOGI(LOG_LEVEL, "timestamp_interval:%f\n", timestamp_interval);
+    LOGI(LOG_LEVEL, "seek_target: %d\n", seek_target);
+    int64_t seeked_ts = av_rescale_q(seek_target,
+                                     AV_TIME_BASE_Q,
+                                     st_src->time_base);
+    LOGI(LOG_LEVEL, "Seek.... ts[%d]\n", seeked_ts);
+    if (av_seek_frame(formatContext_src, *stream_index,
+                      seeked_ts, AVSEEK_FLAG_ANY | AVSEEK_FLAG_BACKWARD) < 0) {
       LOGI(LOG_LEVEL, "Seek error.\n");
       continue;
     }
+loop:
     if (av_read_frame(formatContext_src, &pt_src) < 0) {
+      LOGI(LOG_LEVEL, "No frame to read.\n");
       break;
+    } else if (pt_src.stream_index != (*stream_index)) {
+      LOGI(LOG_LEVEL, "pt_src.stream_index:%d, stream_index:%d\n", pt_src.stream_index, *stream_index);
+      goto loop;
     }
+    LOGI(LOG_LEVEL, "pt_src.stream_index:%d, stream_index:%d\n", pt_src.stream_index, *stream_index);
     if (pt_src.stream_index == (*stream_index)) {
+      LOGI(LOG_LEVEL, "Start decode the seeked frame.\n");
       ret = avcodec_decode_video2(st_src->codec, frame_src, &got_frame, &pt_src);
       if (ret < 0) {
         LOGI(LOG_LEVEL, "Error decoding video frame\n");
