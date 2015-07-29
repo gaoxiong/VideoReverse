@@ -13,4 +13,7 @@ local.properties
 *.iml
 Thumbs.db
 *.swp
-*.so
+*.lo
+*.o
+*.a
+*.log
