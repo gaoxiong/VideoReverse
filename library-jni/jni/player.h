@@ -92,7 +92,11 @@ static const struct {
 
 
 // FFmpegPlayer
+<<<<<<< HEAD
 static char *player_class_path_name = "com/appunite/ffmpeg/FFmpegPlayer";
+=======
+static char *player_class_path_name = "com/ffmpegtest/MainActivity";
+>>>>>>> e948947... Update to origin code
 static JavaField player_m_native_player = {"mNativePlayer", "I"};
 static JavaMethod player_on_update_time = {"onUpdateTime","(JJZ)V"};
 static JavaMethod player_prepare_audio_track = {"prepareAudioTrack", "(II)Landroid/media/AudioTrack;"};
@@ -147,7 +151,11 @@ static JNINativeMethod player_methods[] = {
 	{"resumeNative", "()V", (void*) jni_player_resume},
 
 	{"setDataSourceNative", "(Ljava/lang/String;Ljava/util/Map;III)I", (void*) jni_player_set_data_source},
+<<<<<<< HEAD
 	{"reverseNative", "(Ljava/lang/String;Ljava/lang/String;JJIII)I", (void*) jni_player_reverse},
+=======
+//	{"reverseNative", "(Ljava/lang/String;Ljava/lang/String;JJIII)I", (void*) jni_player_reverse},
+>>>>>>> e948947... Update to origin code
 	{"stopNative", "()V", (void*) jni_player_stop},
 
 	{"renderFrameStart", "()V", (void*) jni_player_render_frame_start},
